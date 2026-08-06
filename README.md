@@ -7,7 +7,7 @@ InvoiceFlow is a modern web application designed for comprehensive invoice manag
 ## Current Development Status
 
 - **Phase**: P0.8A Development Standards
-- **Active Focus**: Monorepo and environment setup. Backend development will start before frontend development.
+- **Active Focus**: Defining development, security, testing and delivery standards.
 
 ## Technology Stack
 
