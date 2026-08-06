@@ -115,39 +115,80 @@ All backend feature development must follow the locked InvoiceFlow engineering f
 
 ## 9. API Response Standards
 
-- API responses must follow a consistent envelope structure (e.g., `{ data, error, meta }`).
-- Never leak stack traces or internal error details to the client.
+- Responses must adhere strictly to the approved envelope structures.
+- Success envelope:
+
+```json
+{
+  "success": true,
+  "data": {},
+  "message": "Optional human-readable message"
+}
+```
+
+- Error envelope:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request validation failed",
+    "details": []
+  }
+}
+```
+
+- Idempotency must be supported for state-changing endpoints via an idempotency key.
 
 ## 10. HTTP Status Rules
 
-- `200 OK` for successful queries and updates.
-- `201 Created` for successful creation.
-- `400 Bad Request` for validation failures.
-- `401 Unauthorized` for missing or invalid authentication.
-- `403 Forbidden` for authenticated users lacking required permissions.
-- `404 Not Found` for missing resources.
-- `500 Internal Server Error` for unexpected backend crashes.
+- 200 — Successful read or update
+- 201 — Resource created
+- 204 — Successful operation with no response body
+- 400 — Malformed or semantically invalid request
+- 401 — Missing, invalid or expired authentication
+- 403 — Authenticated but not authorised
+- 404 — Resource not found
+- 409 — Conflict, duplicate or invalid state transition
+- 422 — Structured validation failure
+- 429 — Rate limit exceeded
+- 500 — Unexpected internal failure
+- 502 — Upstream provider failure
+- 503 — Required service temporarily unavailable
 
 ## 11. Financial-Code Rules
 
-- **No floating-point arithmetic for currency.** All financial amounts must be represented, stored, and calculated as integers (e.g., cents).
-- Format to decimal strings only at the presentation layer.
+- Never use JavaScript floating-point arithmetic for money.
+- Use Prisma.Decimal or Decimal.js.
+- Store money in PostgreSQL DECIMAL columns.
+- Accept and return monetary values as decimal strings at API boundaries.
+- Store monetary values to two decimal places.
+- Use ROUND_HALF_UP consistently.
+- Never trust totals supplied by the frontend.
 
 ## 12. GST Calculation Rules
 
-- GST and other tax calculations must use precise integer mathematics or a dedicated decimal library.
-- Follow strict, legally compliant rounding rules for tax calculations (typically round half to even or round half up).
+- The backend determines CGST/SGST versus IGST.
+- GST rates, SAC codes, supplier state and place of supply are validated.
+- Tax calculations use Decimal arithmetic.
+- The approved rounding policy is ROUND_HALF_UP.
+- Commercial GST settings require accountant review before production use.
 
 ## 13. Date and Timezone Rules
 
-- Store all dates and timestamps in UTC (ISO 8601 format) in the database.
-- Perform timezone conversions exclusively on the client/presentation layer based on the user's locale.
+- `issueDate`, `dueDate` and `paidAt` use PostgreSQL DATE.
+- Event timestamps are stored in UTC.
+- InvoiceFlow uses Asia/Kolkata as its business timezone.
+- The backend determines overdue status.
+- The browser clock is never trusted for financial decisions.
 
 ## 14. Environment-Variable Rules
 
 - Never hardcode secrets. Use environment variables.
 - Prefix frontend-exposed variables correctly (e.g., `NEXT_PUBLIC_`).
 - Fail fast on application startup if required environment variables are missing.
+- All required environment variables must be documented in `.env.example`.
 
 ## 15. Error Handling
 
@@ -156,14 +197,16 @@ All backend feature development must follow the locked InvoiceFlow engineering f
 
 ## 16. Logging
 
-- Log meaningful context (e.g., `userId`, `invoiceId`, `action`) without logging sensitive PII or credentials.
+- Log meaningful context (e.g., `userId`, `invoiceId`, `action`).
 - Use structured logging (JSON) in production.
+- **Exclusions**: Never log sensitive PII, passwords, JWT tokens, or credentials under any circumstances.
 
 ## 17. Database Standards
 
 - Use Prisma migrations to evolve the database schema.
 - Do not make manual schema changes to the PostgreSQL database.
 - Always include database-level constraints (e.g., `UNIQUE`, `NOT NULL`, foreign keys) to enforce data integrity beyond the application layer.
+- Migration changes must be reviewed carefully to prevent data loss or irreversible state.
 
 ## 18. Validation Standards
 
@@ -180,6 +223,7 @@ All backend feature development must follow the locked InvoiceFlow engineering f
 
 - Unit test all business logic and financial calculations thoroughly.
 - Mock external APIs (e.g., email sending) in tests.
+- Integration tests must verify the Controller-to-Repository flow, testing multiple layers.
 - Maintain a minimum test coverage threshold (e.g., 80%) for core domain logic.
 
 ## 21. Code Quality
@@ -195,6 +239,7 @@ All backend feature development must follow the locked InvoiceFlow engineering f
 ## 23. Detailed Git and PR Standards
 
 - Pull requests must have a descriptive title and reference any related issue tracking numbers.
+- PRs must contain clear evidence of testing and validation (e.g., test output, validation logs).
 - PRs must pass all CI checks before they can be reviewed.
 - Squash and merge PRs to keep the `main` history clean.
 
@@ -203,6 +248,8 @@ All backend feature development must follow the locked InvoiceFlow engineering f
 - Code is written and passes all local validations.
 - Unit and integration tests are written and passing.
 - Feature is manually tested.
+- PR evidence (manual testing logs or screenshots) is attached.
+- Documentation and environment variables are updated.
 - PR is reviewed and approved by at least one other engineer.
 - CI/CD pipeline passes completely.
 
@@ -216,4 +263,7 @@ All backend feature development must follow the locked InvoiceFlow engineering f
 
 ## 27. Approval Status
 
-- **Status:** Approved (P0.8A)
+- **Document:** InvoiceFlow Development Standards
+- **Phase:** P0.8A
+- **Status:** Proposed — pending boss review
+- **Applies from:** Approval commit onward
