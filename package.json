@@ -1,6 +1,7 @@
 {
   "name": "invoiceflow",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@9.0.0",
   "engines": {
     "node": ">=20.0.0"
@@ -16,6 +17,8 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\""
   },
   "devDependencies": {
-    "prettier": "^3.2.5"
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "typescript-eslint": "^7.5.0"
   }
 }

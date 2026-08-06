@@ -7,11 +7,10 @@
     "build": "tsc",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"Error: no test specified\" && exit 0"
+    "test": "echo \"No automated tests configured for P0.7 foundation\""
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "eslint": "^8.57.0",
     "tsx": "^4.7.1",
     "typescript": "^5.4.3"
   }

@@ -1,3 +1,3 @@
-export const placeholderValidator = (value: any): boolean => {
+export const placeholderValidator = (value: unknown): boolean => {
   return value !== undefined;
 };

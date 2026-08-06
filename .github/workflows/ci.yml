@@ -40,7 +40,7 @@ jobs:
         run: pnpm typecheck
 
       - name: Test
-        run: pnpm test || echo "Tests will be added later"
+        run: pnpm test
 
       - name: Build
         run: pnpm build
