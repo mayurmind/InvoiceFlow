@@ -268,7 +268,123 @@ Forbidden examples:
 run: pnpm test || true
 ```
 
-## 12. Approval Status
+## 12. Workflow Permission Rules
+
+- Define explicit permissions block for all GitHub Action workflows.
+- Use `contents: read` by default.
+- Never grant `write` permissions unless explicitly required for a specific task (e.g., releasing).
+- Do not grant repository administrative permissions to CI runners.
+
+## 13. Baseline CI Required Checks
+
+Every CI run must include:
+
+- `pnpm format:check`
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm build`
+
+All checks must pass without warnings treated as acceptable errors.
+
+## 14. CI Failure Policy
+
+- Any CI failure blocks the merge.
+- No bypassing CI for administrative convenience.
+- A flaky CI run is treated as a defect and must be fixed, not ignored.
+
+## 15. Secret Safety in CI
+
+- Do not log or echo secrets.
+- Use GitHub Secrets for injecting credentials.
+- Do not pass secrets to untrusted actions or third-party scripts.
+- Mask secrets automatically in runner output.
+
+## 16. CI Artifact Policy
+
+- Retain artifacts only as long as strictly necessary (e.g., 7-14 days).
+- Never include `.env` files or hardcoded credentials in build artifacts.
+- Store test coverage and logs safely without exposing PII or database dumps.
+
+## 17. Lockfile Policy
+
+- The `pnpm-lock.yaml` file must be committed and kept up-to-date.
+- CI must use `--frozen-lockfile` (or `pnpm install --frozen-lockfile`) to prevent unintended upgrades.
+- Manual edits to `pnpm-lock.yaml` are strictly prohibited.
+
+## 18. Upgrade Validation Gate
+
+All dependency upgrades must pass:
+
+- Local test execution
+- Full CI pipeline execution
+- Build size review (if significant)
+- Security audit scan (`pnpm audit`)
+
+## 19. Deprecated Dependency Policy
+
+- Deprecated dependencies must be tracked.
+- A deprecated package must be scheduled for replacement within a maximum of 3 months.
+- New dependencies must not rely on known deprecated packages.
+
+## 20. Dependency Removal Policy
+
+- Remove unused dependencies immediately to reduce attack surface.
+- Review `package.json` regularly for orphaned dependencies.
+- Use tools like `knip` or `depcheck` to verify unused packages before removal.
+
+## 21. Duplicate Dependency Policy
+
+- Avoid resolving multiple versions of the same dependency unless absolutely necessary.
+- Use pnpm overrides/resolutions to enforce single versions of transitive dependencies if they conflict or introduce vulnerabilities.
+
+## 22. Monorepo Dependency Rules
+
+- Share common dependencies (e.g., TypeScript, ESLint, Prettier) at the root level where practical.
+- Use workspace protocols (e.g., `workspace:*`) for internal package references.
+- Do not allow cross-app dependencies (e.g., `apps/web` depending on `apps/api`) directly; extract shared logic to `packages/`.
+
+## 23. CI Performance and Reliability
+
+- Cache pnpm store and build outputs to reduce CI times.
+- Ensure caching mechanisms do not accidentally cache stale or corrupted build states.
+- Set explicit timeouts for jobs to prevent hung runners.
+
+## 24. Dependabot or Renovate Policy
+
+- Dependabot or Renovate may be introduced in a future phase.
+- When introduced, automated PRs must still pass all CI checks and human review.
+- Security updates must be prioritized over feature updates.
+
+## 25. Emergency Dependency Response
+
+- In the event of a zero-day vulnerability in a dependency, immediate mitigation is required.
+- If a patch is unavailable, the dependency must be temporarily removed, mocked, or isolated until safe.
+
+## 26. Production Release Gate
+
+A release to production requires:
+
+- Clean CI run on `main`.
+- Clean security audit.
+- No unresolved high or critical vulnerabilities.
+- Final boss review.
+
+## 27. Exceptions and Risk Acceptance
+
+- Exceptions to these rules require documented justification.
+- Risk acceptance for vulnerabilities requires explicit approval from the engineering lead, stating the reason and expiration of the acceptance.
+
+## 28. Maintenance Definition of Done
+
+A maintenance or dependency upgrade task is complete when:
+
+- The package is updated.
+- `pnpm-lock.yaml` is regenerated cleanly.
+- CI passes.
+- PR is reviewed and approved.
+
+## 29. Approval Status
 
 Document: InvoiceFlow Dependency and CI Maintenance Policy
 Phase: P0.8E

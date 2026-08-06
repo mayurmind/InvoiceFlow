@@ -2,11 +2,11 @@
 
 ## 1. Purpose
 
-Explain that a task is not complete merely because code runs locally.
+InvoiceFlow tasks are not considered complete merely because the code runs locally. Completion requires architecture compliance, validation, testing, documentation, clean Git evidence and successful CI.
 
 ## 2. Branch Rules
 
-Freeze:
+The following branch rules are mandatory:
 
 - `main` is stable and approved
 - `backend` contains backend work
@@ -39,7 +39,7 @@ Rejected examples:
 - `work`
 - `fix issue`
 
-Require:
+The following commit rules apply:
 
 - One logical concern per commit
 - No secret
@@ -49,7 +49,7 @@ Require:
 
 ## 4. Pull Request Size and Scope
 
-Require:
+The following PR scope rules apply:
 
 - Small, reviewable PRs
 - One phase or subtask per PR where practical
@@ -117,7 +117,7 @@ Reviewers must examine:
 
 ## 8. Local Validation Gate
 
-Before commit and before PR approval:
+Before commit and before PR approval, the following checks must pass:
 
 ```bash
 pnpm format:check
@@ -128,7 +128,7 @@ pnpm build
 git diff --check
 ```
 
-Also review:
+Also review the following output:
 
 ```bash
 git status
@@ -139,7 +139,7 @@ git log -1 --oneline
 
 ## 9. Database Change Gate
 
-For migration work require:
+Migration work requires:
 
 - Prisma schema diff
 - Migration files
@@ -153,7 +153,7 @@ For migration work require:
 
 ## 10. Security Change Gate
 
-Require:
+Security changes require:
 
 - Threat analysis
 - Authentication impact
@@ -206,7 +206,6 @@ A task is complete only when:
 - Commit and push evidence exist
 - Boss review approves the task
 
-State clearly:
 **“Works on my machine” is not the Definition of Done.**
 
 ## 13. Approval Status

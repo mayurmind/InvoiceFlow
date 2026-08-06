@@ -7,7 +7,7 @@ InvoiceFlow is a modern web application designed for comprehensive invoice manag
 ## Current Development Status
 
 - **Phase**: P0.8 Engineering Governance
-- **Active Focus**: Defining development, security, testing and delivery standards.
+- **Active Focus**: Finalizing security, testing, delivery and CI governance before backend implementation.
 
 ## Technology Stack
 
@@ -32,9 +32,9 @@ InvoiceFlow is a modern web application designed for comprehensive invoice manag
 - `backend` - Active backend development
 - `frontend` - Active frontend development
 
-## Engineering Governance and Standards
+## Engineering Standards
 
-All contributors must read and strictly adhere to the following InvoiceFlow standards before writing, reviewing, testing, or committing any code:
+InvoiceFlow development follows mandatory architecture, TypeScript, financial-integrity, security, testing and delivery standards.
 
 - [Development Standards](docs/standards/development-standards.md)
 - [Security Baseline](docs/standards/security-baseline.md)
