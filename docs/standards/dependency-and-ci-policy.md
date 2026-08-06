@@ -274,69 +274,123 @@ run: pnpm test || true
 - Use `contents: read` by default.
 - Never grant `write` permissions unless explicitly required for a specific task (e.g., releasing).
 - Do not grant repository administrative permissions to CI runners.
+- No production secrets for fork or untrusted PR execution
+- Protected deployment environments
+- Least privilege per individual job
+- Review of third-party action permissions
+- Security review before expanding permissions
+- Explicit consideration of contents, pull-requests, checks, packages, id-token and deployment permissions
 
 ## 13. Baseline CI Required Checks
 
-Every CI run must include:
+Every CI run must include the complete pipeline:
 
-- `pnpm format:check`
-- `pnpm lint`
-- `pnpm typecheck`
-- `pnpm test`
-- `pnpm build`
+- Repository checkout
+- pnpm setup
+- Node.js setup
+- pnpm install --frozen-lockfile
+- pnpm format:check
+- pnpm lint
+- pnpm typecheck
+- pnpm test
+- pnpm build
 
-All checks must pass without warnings treated as acceptable errors.
+Required command failures block approval. Warnings must be investigated and documented according to their severity; reviewed non-blocking warnings may be scheduled through the maintenance policy.
 
 ## 14. CI Failure Policy
 
-- Any CI failure blocks the merge.
-- No bypassing CI for administrative convenience.
-- A flaky CI run is treated as a defect and must be fixed, not ignored.
+Any CI failure blocks the merge. The required investigation process is:
+
+- Identify the failed job and step.
+- Review safe logs.
+- Reproduce locally where practical.
+- Correct the root cause.
+- Run complete validation.
+- Commit the correction.
+- Verify the new CI run.
+
+Infrastructure failures may be retried only after confirming that project code was not responsible.
 
 ## 15. Secret Safety in CI
 
+- Environment-specific secrets
+- Least-privilege credentials
+- No production credentials for untrusted PRs
+- Immediate rotation after exposure
+- OpenID Connect consideration
+- The rule that log masking is not a substitute for preventing secret output
 - Do not log or echo secrets.
 - Use GitHub Secrets for injecting credentials.
 - Do not pass secrets to untrusted actions or third-party scripts.
-- Mask secrets automatically in runner output.
 
 ## 16. CI Artifact Policy
 
-- Retain artifacts only as long as strictly necessary (e.g., 7-14 days).
-- Never include `.env` files or hardcoded credentials in build artifacts.
-- Store test coverage and logs safely without exposing PII or database dumps.
+Prohibited artifacts:
+
+- `.env` files
+- Access and refresh tokens
+- Cookies
+- JWT secrets
+- Database URLs
+- Supabase service-role keys
+- Resend credentials
+- Private keys
+- Production personal data
+- Sensitive payloads
+
+Allowed artifacts:
+
+- Test coverage reports (safely scrubbed)
+- Build logs (safely scrubbed)
+
+Retain artifacts only as long as strictly necessary (e.g., 7-14 days).
 
 ## 17. Lockfile Policy
 
 - The `pnpm-lock.yaml` file must be committed and kept up-to-date.
 - CI must use `--frozen-lockfile` (or `pnpm install --frozen-lockfile`) to prevent unintended upgrades.
-- Manual edits to `pnpm-lock.yaml` are strictly prohibited.
+- Manifest and lockfile changes remain synchronized
+- Unrelated lockfile changes are rejected
+- Dependency removal updates the lockfile
+- Merge conflicts are resolved by pnpm regeneration
+- Lockfiles must never be deleted or hand-edited to resolve conflicts
 
 ## 18. Upgrade Validation Gate
 
-All dependency upgrades must pass:
+All dependency upgrades must pass the complete validation gate:
 
-- Local test execution
-- Full CI pipeline execution
-- Build size review (if significant)
-- Security audit scan (`pnpm audit`)
+- `pnpm install`
+- `pnpm format:check`
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm build`
+- `git diff --check`
+
+Major upgrades must additionally include relevant integration, security, migration and smoke tests plus a rollback plan.
 
 ## 19. Deprecated Dependency Policy
 
 - Deprecated dependencies must be tracked.
-- A deprecated package must be scheduled for replacement within a maximum of 3 months.
+- The current ESLint 8 and associated tooling deprecation warnings must be addressed in a dedicated future tooling-maintenance task.
+- Deprecated dependencies should be scheduled for replacement as a project-specific reviewed target.
 - New dependencies must not rely on known deprecated packages.
 
 ## 20. Dependency Removal Policy
 
-- Remove unused dependencies immediately to reduce attack surface.
-- Review `package.json` regularly for orphaned dependencies.
-- Use tools like `knip` or `depcheck` to verify unused packages before removal.
+Dependency removal must require:
+
+- Usage searches
+- Import removal
+- Configuration cleanup
+- Documentation updates
+- Lockfile regeneration
+- Full validation
 
 ## 21. Duplicate Dependency Policy
 
 - Avoid resolving multiple versions of the same dependency unless absolutely necessary.
-- Use pnpm overrides/resolutions to enforce single versions of transitive dependencies if they conflict or introduce vulnerabilities.
+- Do not automatically prescribe pnpm overrides to force a single version. Overrides require compatibility and security review because forcing a version can break dependent packages.
 
 ## 22. Monorepo Dependency Rules
 
@@ -358,20 +412,26 @@ All dependency upgrades must pass:
 
 ## 25. Emergency Dependency Response
 
-- In the event of a zero-day vulnerability in a dependency, immediate mitigation is required.
-- If a patch is unavailable, the dependency must be temporarily removed, mocked, or isolated until safe.
+- Exposure analysis
+- Credential rotation
+- Focused security testing
+- Full regression testing
+- Deployment-impact review
+- Immediate mitigation is required. If a patch is unavailable, the dependency must be temporarily removed, mocked, or isolated until safe.
 
 ## 26. Production Release Gate
 
 A release to production requires:
 
 - Clean CI run on `main`.
-- Clean security audit.
-- No unresolved high or critical vulnerabilities.
+- No unresolved critical or high exploitable vulnerability. Moderate and low findings must be reviewed, documented and tracked.
+- Unsupported runtime as a release blocker
+- Unreviewed lockfile or workflow-permission changes as blockers
 - Final boss review.
 
 ## 27. Exceptions and Risk Acceptance
 
+- Exception owner, expiry, impact, compensating control and follow-up task must be identified
 - Exceptions to these rules require documented justification.
 - Risk acceptance for vulnerabilities requires explicit approval from the engineering lead, stating the reason and expiration of the acceptance.
 
@@ -383,6 +443,8 @@ A maintenance or dependency upgrade task is complete when:
 - `pnpm-lock.yaml` is regenerated cleanly.
 - CI passes.
 - PR is reviewed and approved.
+- The complete validation gate passes.
+- Documentation is updated.
 
 ## 29. Approval Status
 
