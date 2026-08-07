@@ -11,21 +11,14 @@ const uuidSchema = z.string().uuid();
  * If provided and valid, trusts the incoming ID. Otherwise, generates a new one.
  */
 export const requestIdMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  let reqId = req.header(REQUEST_ID_HEADER);
-
-  // Validate incoming ID to prevent log injection or non-UUID payloads
-  const parsed = uuidSchema.safeParse(reqId);
-  if (!parsed.success) {
-    reqId = randomUUID();
-  } else {
-    reqId = parsed.data;
-  }
+  const parsed = uuidSchema.safeParse(req.header(REQUEST_ID_HEADER));
+  const requestId = parsed.success ? parsed.data : randomUUID();
 
   // Attach to request object for downstream use
-  req.id = reqId as string;
+  req.id = requestId;
 
   // Set the response header
-  res.setHeader(REQUEST_ID_HEADER, req.id);
+  res.setHeader(REQUEST_ID_HEADER, requestId);
 
   next();
 };

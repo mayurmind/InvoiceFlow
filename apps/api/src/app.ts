@@ -1,11 +1,12 @@
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
-import { rateLimit } from 'express-rate-limit';
 import pinoHttp from 'pino-http';
 import { env } from './config/env';
 import { logger } from './utilities/logger';
 import { requestIdMiddleware, REQUEST_ID_HEADER } from './middleware/request-id.middleware';
+import { createRateLimiter } from './middleware/rate-limit.middleware';
+import { healthRouter } from './routes/health.routes';
 import { apiV1Router } from './routes/api-v1.router';
 import { globalErrorMiddleware, notFoundMiddleware } from './middleware/error.middleware';
 
@@ -39,7 +40,7 @@ app.use(
     customProps: (req) => {
       // req.id is now properly typed via module augmentation in request-id.middleware.ts
       return {
-        requestId: (req as import('express').Request).id,
+        requestId: req.id,
       };
     },
     // Don't log requests automatically in test environment to avoid noise
@@ -52,23 +53,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // 7. Rate Limiting Foundation
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 100, // Limit each IP to 100 requests per `window`
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: (req: import('express').Request, _res: import('express').Response) => {
-    return {
-      error: {
-        code: 'RATE_LIMITED',
-        message: 'Too many requests, please try again later',
-        requestId: req.id,
-      },
-    };
-  },
-});
-// Apply global rate limiting to all requests
-app.use(limiter);
+app.use(createRateLimiter());
 
 // 8. Routes
 app.use('/health', healthRouter);
