@@ -6,8 +6,8 @@ InvoiceFlow is a modern web application designed for comprehensive invoice manag
 
 ## Current Development Status
 
-- **Phase**: P0.8 Engineering Governance
-- **Active Focus**: Finalizing security, testing, delivery and CI governance before backend implementation.
+- **Phase**: P0.9 Implementation Planning and P1 Readiness
+- **Active Focus**: Freezing the implementation roadmap, project risks and P1 entry criteria.
 
 ## Technology Stack
 
@@ -31,6 +31,12 @@ InvoiceFlow is a modern web application designed for comprehensive invoice manag
 - `main` - Production-ready code
 - `backend` - Active backend development
 - `frontend` - Active frontend development
+
+## Project Planning
+
+- [Implementation Roadmap](docs/planning/implementation-roadmap.md)
+- [Project Risk Register](docs/planning/risk-register.md)
+- [P1 Readiness Checklist](docs/planning/p1-readiness-checklist.md)
 
 ## Engineering Standards
 
