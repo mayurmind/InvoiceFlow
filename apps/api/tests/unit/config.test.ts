@@ -1,24 +1,17 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// We need to test the safeParse logic inside env.ts. Since env.ts parses and exits on import if invalid,
-// we must isolate module imports and manipulate process.env before importing.
+import { describe, it, expect, vi } from 'vitest';
+import { parseEnv } from '../../src/config/env';
 
 describe('Environment Validation', () => {
-  const originalEnv = process.env;
+  it('accepts valid configuration and parses defaults', () => {
+    const testEnv = {
+      NODE_ENV: 'test',
+      PORT: '8080',
+      HOST: '127.0.0.1',
+      LOG_LEVEL: 'silent',
+      CORS_ALLOWED_ORIGINS: 'http://localhost:3000, http://test.com',
+    };
 
-  beforeEach(() => {
-    vi.resetModules();
-    process.env = { ...originalEnv };
-  });
-
-  it('accepts valid configuration and parses defaults', async () => {
-    process.env.NODE_ENV = 'test';
-    process.env.PORT = '8080';
-    process.env.HOST = '127.0.0.1';
-    process.env.LOG_LEVEL = 'silent';
-    process.env.CORS_ALLOWED_ORIGINS = 'http://localhost:3000, http://test.com';
-
-    const { env } = await import('../../src/config/env');
+    const env = parseEnv(testEnv);
 
     expect(env.NODE_ENV).toBe('test');
     expect(env.PORT).toBe(8080);
@@ -27,31 +20,44 @@ describe('Environment Validation', () => {
     expect(env.CORS_ALLOWED_ORIGINS).toEqual(['http://localhost:3000', 'http://test.com']);
   });
 
-  it('fails securely on invalid PORT', async () => {
-    process.env.PORT = 'invalid';
-    process.env.CORS_ALLOWED_ORIGINS = 'http://localhost';
+  it('fails securely on invalid PORT', () => {
+    const testEnv = {
+      NODE_ENV: 'test',
+      PORT: 'invalid',
+      CORS_ALLOWED_ORIGINS: 'http://localhost',
+    };
 
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    await expect(import('../../src/config/env')).rejects.toThrow('process.exit called');
+    expect(() => parseEnv(testEnv)).toThrow('process.exit called');
+
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(errorSpy).toHaveBeenCalled();
+
+    exitSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 
-  it('fails securely on missing required CORS_ALLOWED_ORIGINS', async () => {
-    process.env.PORT = '5000';
-    delete process.env.CORS_ALLOWED_ORIGINS;
+  it('fails securely on missing required CORS_ALLOWED_ORIGINS', () => {
+    const testEnv = {
+      NODE_ENV: 'test',
+      PORT: '5000',
+    };
 
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    await expect(import('../../src/config/env')).rejects.toThrow('process.exit called');
+    expect(() => parseEnv(testEnv)).toThrow('process.exit called');
+
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(errorSpy).toHaveBeenCalled();
+
+    exitSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 });

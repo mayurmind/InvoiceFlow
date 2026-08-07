@@ -17,8 +17,8 @@ const envSchema = z.object({
     .transform((val) => val.split(',').map((origin) => origin.trim())),
 });
 
-const parseEnv = () => {
-  const parsed = envSchema.safeParse(process.env);
+export const parseEnv = (environment: NodeJS.ProcessEnv = process.env) => {
+  const parsed = envSchema.safeParse(environment);
   if (!parsed.success) {
     // eslint-disable-next-line no-console
     console.error('❌ Invalid environment variables:', parsed.error.flatten().fieldErrors);

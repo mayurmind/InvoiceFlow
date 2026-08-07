@@ -37,9 +37,9 @@ app.use(
   pinoHttp({
     logger,
     customProps: (req) => {
-      // Note: express-pino req is IncomingMessage, we cast to access id
+      // req.id is now properly typed via module augmentation in request-id.middleware.ts
       return {
-        requestId: (req as any).id,
+        requestId: (req as import('express').Request).id,
       };
     },
     // Don't log requests automatically in test environment to avoid noise
@@ -57,17 +57,21 @@ const limiter = rateLimit({
   limit: 100, // Limit each IP to 100 requests per `window`
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  message: {
-    error: {
-      code: 'RATE_LIMIT_EXCEEDED',
-      message: 'Too many requests, please try again later',
-    },
+  message: (req: import('express').Request, _res: import('express').Response) => {
+    return {
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Too many requests, please try again later',
+        requestId: req.id,
+      },
+    };
   },
 });
 // Apply global rate limiting to all requests
 app.use(limiter);
 
 // 8. Routes
+app.use('/health', healthRouter);
 app.use('/api/v1', apiV1Router);
 
 // 9. Not Found Handler

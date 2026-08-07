@@ -3,8 +3,8 @@ import request from 'supertest';
 import { app } from '../../src/app';
 
 describe('Health Routes', () => {
-  it('GET /api/v1/health succeeds and returns 200', async () => {
-    const res = await request(app).get('/api/v1/health');
+  it('GET /health succeeds and returns 200 (Root Liveness Check)', async () => {
+    const res = await request(app).get('/health');
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
     expect(res.body.message).toBe('InvoiceFlow API is running');
@@ -16,5 +16,12 @@ describe('Health Routes', () => {
 
     // Check Request ID header
     expect(res.headers['x-request-id']).toBeDefined();
+  });
+
+  it('GET /api/v1/health alias succeeds and returns 200', async () => {
+    const res = await request(app).get('/api/v1/health');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+    expect(res.body.message).toBe('InvoiceFlow API is running');
   });
 });
