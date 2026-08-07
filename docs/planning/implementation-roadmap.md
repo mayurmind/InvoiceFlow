@@ -38,16 +38,16 @@ P10 — Deployment, Handover and V1 Closure
 
 | Phase | Name                                    | Primary outcome                     | Depends on | Approximate effort | Primary risk                  | Approval gate                          |
 | ----- | --------------------------------------- | ----------------------------------- | ---------- | ------------------ | ----------------------------- | -------------------------------------- |
-| P1    | Backend Engineering Foundation          | Robust API shell & testing setup    | P0         | 1 week             | Incorrect configuration       | CI & tests pass, health works          |
-| P2    | Database Foundation                     | Core schema, migrations, connection | P1         | 1 week             | Flawed constraints            | DB tests pass, migrations clean        |
-| P3    | Authentication and User Management      | Login, session, RBAC                | P2         | 1.5 weeks          | Session security              | Auth tests pass, no token leaks        |
-| P4    | Business Settings and Client Management | Client & business APIs              | P3         | 1 week             | RBAC/authorization failures   | Integration & security tests pass      |
-| P5    | Invoice Engine and GST                  | Invoice creation, tax rules         | P4         | 1.5 weeks          | Floating-point or GST errors  | Financial units & snapshot tests pass  |
-| P6    | Invoice Lifecycle, PDF and Email        | Immutable invoices, PDF, emails     | P5         | 1 week             | Delivery state mismatches     | Mocks pass, exact PDF matches          |
-| P7    | Payments, Dashboard and Audit           | Payment handling, metrics           | P6         | 1 week             | Race conditions               | Reconciliations pass, concurrency safe |
-| P8    | Frontend Integration                    | Full Next.js UI integration         | P7         | 2 weeks            | Contract divergence           | Protected screens work, flows pass     |
-| P9    | Hardening, E2E and Release Candidate    | Security, testing, RC ready         | P8         | 1.5 weeks          | Undiscovered critical bugs    | 0 critical/high bugs, E2E passes       |
-| P10   | Deployment, Handover and V1 Closure     | Live production environment         | P9         | 1 week             | Production configuration bugs | Smoke test passes, CI green            |
+| P1    | Backend Engineering Foundation          | Robust API shell & testing setup    | P0         | 2–3 days           | Incorrect configuration       | CI & tests pass, health works          |
+| P2    | Database Foundation                     | Core schema, migrations, connection | P1         | 3–4 days           | Flawed constraints            | DB tests pass, migrations clean        |
+| P3    | Authentication and User Management      | Login, session, RBAC                | P2         | 4–5 days           | Session security              | Auth tests pass, no token leaks        |
+| P4    | Business Settings and Client Management | Client & business APIs              | P3         | 3–4 days           | RBAC/authorization failures   | Integration & security tests pass      |
+| P5    | Invoice Engine and GST                  | Invoice creation, tax rules         | P4         | 4–5 days           | Floating-point or GST errors  | Financial units & snapshot tests pass  |
+| P6    | Invoice Lifecycle, PDF and Email        | Immutable invoices, PDF, emails     | P5         | 3–4 days           | Delivery state mismatches     | Mocks pass, exact PDF matches          |
+| P7    | Payments, Dashboard and Audit           | Payment handling, metrics           | P6         | 3–4 days           | Race conditions               | Reconciliations pass, concurrency safe |
+| P8    | Frontend Integration                    | Full Next.js UI integration         | P7         | 4–5 days           | Contract divergence           | Protected screens work, flows pass     |
+| P9    | Hardening, E2E and Release Candidate    | Security, testing, RC ready         | P8         | 2–3 days           | Undiscovered critical bugs    | 0 critical/high bugs, E2E passes       |
+| P10   | Deployment, Handover and V1 Closure     | Live production environment         | P9         | 1–2 days           | Production configuration bugs | Smoke test passes, CI green            |
 
 ## 4. P1 — BACKEND ENGINEERING FOUNDATION
 
