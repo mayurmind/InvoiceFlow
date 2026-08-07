@@ -1,7 +1,9 @@
 import 'express';
 
-declare module 'express-serve-static-core' {
+declare module 'express' {
   interface Request {
     id: string;
   }
 }
+
+export {};

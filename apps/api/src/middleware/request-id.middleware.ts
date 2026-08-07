@@ -22,10 +22,3 @@ export const requestIdMiddleware = (req: Request, res: Response, next: NextFunct
 
   next();
 };
-
-// Properly augment Express Request type
-declare module 'express-serve-static-core' {
-  interface Request {
-    id: string;
-  }
-}
