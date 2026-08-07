@@ -1,10 +1,15 @@
 node_modules/
 .pnpm-store/
 
+# Environment files
 .env
-.env.local
-.env.*.local
+.env.*
+**/.env
+**/.env.*
+
+# Safe templates
 !.env.example
+!**/.env.example
 
 .next/
 dist/

@@ -60,16 +60,21 @@
 
 P1 can begin only after:
 
-- P0.9 documents approved
-- local validation passes
-- P0.9 commit is pushed
-- new GitHub Actions run is evaluated
-- no repository-caused CI failure remains unresolved
-- working tree is clean
-- backend is synchronized with origin/backend
-- .gitignore environment-file hardening is completed
-- dev:web workspace/placeholder consistency is completed
-- P0.10 final P0 closure review is approved
+- [x] P0.9 documents approved
+- [x] local validation passes
+- [x] P0.9 commit is pushed
+- [x] new GitHub Actions run is evaluated
+- [x] no repository-caused CI failure remains unresolved
+- [x] working tree is clean
+- [x] backend is synchronized with origin/backend
+- [x] .gitignore environment-file hardening completed
+- [x] dev:web placeholder/workspace inconsistency resolved
+- [x] Node.js runtime moved to supported LTS baseline
+- [x] GitHub Actions runtime versions modernized
+- [x] Local and CI pnpm baseline aligned
+- [ ] P0.10 final closure audit approved
+- [ ] Final P0.10 CI green
+- [ ] P1 authorization issued by Boss
 
 **IMPORTANT:**
 P0.9 itself does NOT authorize implementation.

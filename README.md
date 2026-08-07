@@ -6,14 +6,15 @@ InvoiceFlow is a modern web application designed for comprehensive invoice manag
 
 ## Current Development Status
 
-- **Phase**: P0.9 Implementation Planning and P1 Readiness
-- **Active Focus**: Freezing the implementation roadmap, project risks and P1 entry criteria.
+- **Phase**: P0.10 Final Phase-0 Readiness Audit
+- **Active Focus**: Closing repository, runtime, CI and security-readiness blockers before P1 authorization.
 
 ## Technology Stack
 
 - **Monorepo**: pnpm workspaces
 - **Language**: TypeScript
-- **Runtime**: Node.js
+- **Runtime**: Node.js 24 LTS
+- **Package Manager**: pnpm 9.15.9
 - **Backend (Planned)**: Express, Prisma, PostgreSQL
 - **Frontend (Planned)**: Next.js
 - **Tooling**: ESLint, Prettier, GitHub Actions
@@ -37,6 +38,7 @@ InvoiceFlow is a modern web application designed for comprehensive invoice manag
 - [Implementation Roadmap](docs/planning/implementation-roadmap.md)
 - [Project Risk Register](docs/planning/risk-register.md)
 - [P1 Readiness Checklist](docs/planning/p1-readiness-checklist.md)
+- [Phase 0 Closure and P1 Authorization](docs/planning/p0-closure-and-p1-authorization.md)
 
 ## Engineering Standards
 
@@ -50,8 +52,8 @@ InvoiceFlow development follows mandatory architecture, TypeScript, financial-in
 
 ## Local Setup Instructions
 
-1. Install [Node.js](https://nodejs.org/) (v20+ recommended).
-2. Install pnpm: `npm install -g pnpm`.
+1. Install [Node.js](https://nodejs.org/) (Node.js 24 LTS).
+2. Install pnpm: `npm install -g pnpm@9.15.9`.
 3. Clone the repository and checkout the active development branch (e.g., `backend`).
 4. Install dependencies: `pnpm install`
 5. Set up environment variables (see below).
@@ -71,7 +73,6 @@ cp apps/web/.env.example apps/web/.env.local
 Run these commands from the repository root:
 
 - `pnpm dev:api` - Start the backend development server
-- `pnpm dev:web` - Start the frontend development server
 - `pnpm build` - Build all packages and applications
 - `pnpm lint` - Run ESLint across the workspace
 - `pnpm typecheck` - Run TypeScript compiler checks

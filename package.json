@@ -2,13 +2,12 @@
   "name": "invoiceflow",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@9.15.9",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.0.0 <25.0.0"
   },
   "scripts": {
     "dev:api": "pnpm --filter api run dev",
-    "dev:web": "pnpm --filter web run dev",
     "build": "pnpm -r run build",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
