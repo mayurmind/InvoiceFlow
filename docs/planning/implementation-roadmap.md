@@ -2,7 +2,7 @@
 
 ## 1. PURPOSE
 
-This document defines the approved implementation sequence from P1 through production delivery.
+This document defines the proposed implementation sequence from P1 through production delivery. It becomes authoritative after approval.
 
 - Scope changes require explicit review.
 - Later phases must not begin while their blocking dependencies are unresolved.
@@ -469,7 +469,7 @@ P10 Deployment
 - **M1 — Backend skeleton operational**: Deliverable: Configured API; Evidence: CI/Health endpoint; Blocker: Express issues; Authority: Boss.
 - **M2 — Database stable**: Deliverable: Schema deployed; Evidence: DB tests pass; Blocker: Migration fails; Authority: Boss.
 - **M3 — Authentication secure**: Deliverable: RBAC working; Evidence: Security tests; Blocker: Session gaps; Authority: Boss.
-- **M4 — Client/business foundation complete**: Deliverable: Org APIs; Evidence: Integration tests; Blocker: IDOR; Authority: Boss.
+- **M4 — Client/business foundation complete**: Deliverable: Business Settings and Client APIs; Evidence: Integration tests; Blocker: IDOR; Authority: Boss.
 - **M5 — Invoice engine correct**: Deliverable: Math/GST perfect; Evidence: Calculation tests; Blocker: Floating point issues; Authority: Boss.
 - **M6 — Invoice delivery complete**: Deliverable: Email/PDF; Evidence: Snapshots/Mocks; Blocker: Storage fails; Authority: Boss.
 - **M7 — Payment/dashboard backend complete**: Deliverable: Sync logic; Evidence: Concurrency tests; Blocker: Race conditions; Authority: Boss.
@@ -479,9 +479,9 @@ P10 Deployment
 
 ## 16. ESTIMATED PROJECT SCHEDULE
 
-- **Phase duration**: 1-2 weeks per phase
-- **Cumulative duration**: ~11-13 weeks total (Remaining implementation window: Approximately 4–6 weeks for a disciplined college-level MVP from P1 onwards).
-- **Critical-path dependencies**: P1 -> P2 -> P3 -> P5 -> P6 -> P8 -> P9 -> P10.
+- **Phase duration**: Variable depending on scope
+- **Cumulative duration**: 30–40 days (4–6 weeks) target for a disciplined college-level MVP from P1 onwards.
+- **Critical-path dependencies**: P1 -> P2 -> P3 -> P4 -> P5 -> P6 -> P7 -> P8 -> P9 -> P10.
 
 ## 17. DAILY DEVELOPMENT LOOP
 

@@ -67,6 +67,8 @@ P1 can begin only after:
 - no repository-caused CI failure remains unresolved
 - working tree is clean
 - backend is synchronized with origin/backend
+- .gitignore environment-file hardening is completed
+- dev:web workspace/placeholder consistency is completed
 - P0.10 final P0 closure review is approved
 
 **IMPORTANT:**
