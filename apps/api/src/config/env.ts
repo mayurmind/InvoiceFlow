@@ -2,6 +2,12 @@ import { z } from 'zod';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  DATABASE_URL: z
+    .string({ required_error: 'DATABASE_URL is required' })
+    .min(1, 'DATABASE_URL cannot be empty')
+    .refine((url) => url.startsWith('postgresql://') || url.startsWith('postgres://'), {
+      message: 'DATABASE_URL must be a valid PostgreSQL connection string',
+    }),
   PORT: z
     .string()
     .transform((val) => parseInt(val, 10))
