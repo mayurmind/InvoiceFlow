@@ -41,6 +41,11 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Generate Prisma Client
+        run: pnpm --filter api exec prisma generate
+        env:
+          DIRECT_URL: postgresql://ci:ci@localhost:5432/invoiceflow_ci
+
       - name: Typecheck
         run: pnpm typecheck
 
