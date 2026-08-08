@@ -2,7 +2,14 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.next/**', '**/coverage/**'],
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/.next/**',
+      '**/coverage/**',
+      '**/src/generated/prisma/**',
+    ],
   },
   ...tseslint.configs.recommended,
   {
@@ -13,7 +20,7 @@ export default tseslint.config(
     },
     rules: {
       'no-console': 'warn',
-      'no-unused-vars': 'off', // Turn off standard rule to use TS-specific one safely if needed
+      'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': 'warn',
     },
   },

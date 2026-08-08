@@ -11,13 +11,19 @@
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "test:security": "vitest run tests/security",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "prisma:format": "prisma format",
+    "prisma:validate": "prisma validate",
+    "prisma:generate": "prisma generate"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "7.9.1",
+    "@prisma/client": "7.9.1",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "express-rate-limit": "^7.3.1",
     "helmet": "^7.1.0",
+    "pg": "8.22.0",
     "pino": "^9.3.2",
     "pino-http": "^10.2.0",
     "zod": "^3.23.8"
@@ -27,9 +33,12 @@
     "@types/express": "^4.17.21",
     "@types/express-serve-static-core": "^4.19.9",
     "@types/node": "^22.0.0",
+    "@types/pg": "8.20.0",
     "@types/supertest": "^6.0.2",
     "@vitest/coverage-v8": "^3.2.6",
+    "dotenv": "17.4.2",
     "pino-pretty": "^11.2.2",
+    "prisma": "7.9.1",
     "supertest": "^7.0.0",
     "tsx": "^4.7.1",
     "typescript": "^5.4.3",

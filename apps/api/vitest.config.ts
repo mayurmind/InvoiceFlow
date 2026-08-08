@@ -22,6 +22,8 @@ export default defineConfig({
         'eslint.config.js',
         '**/*.d.ts',
         'src/server.ts', // Exclude server.ts as it binds to a port and is meant for runtime execution
+        'prisma.config.ts',
+        'src/generated/prisma/**',
       ],
     },
   },
