@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - backend
+      - frontend
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: invoiceflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d invoiceflow_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check Formatting
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Generate Prisma Client
+        run: pnpm --filter api exec prisma generate
+        env:
+          DIRECT_URL: postgresql://ci:ci@localhost:5432/invoiceflow_ci
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Deploy Test Database Migrations
+        run: pnpm --filter api run db:test:migrate
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:password@localhost:5432/invoiceflow_test
+
+      - name: Verify Test Database Migration Status
+        run: pnpm --filter api run db:test:status
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:password@localhost:5432/invoiceflow_test
+
+      - name: Database Integration Tests
+        run: pnpm --filter api run test:database
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:password@localhost:5432/invoiceflow_test
+
+      - name: Test
+        run: pnpm test
+
+      - name: Coverage
+        run: pnpm test:coverage
+
+      - name: Build
+        run: pnpm build

@@ -1,0 +1,315 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  STAFF
+  VIEWER
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  UPI
+  CHEQUE
+  OTHER
+}
+
+enum PaymentStatus {
+  RECORDED
+  REVERSED
+}
+
+enum EmailDeliveryStatus {
+  PENDING
+  ACCEPTED
+  FAILED
+}
+
+model User {
+  id                 String    @id @default(uuid()) @db.Uuid
+  email              String    @unique @db.VarChar(320)
+  passwordHash       String    @db.VarChar(255)
+  firstName          String    @db.VarChar(100)
+  lastName           String    @db.VarChar(100)
+  role               UserRole  @default(VIEWER)
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(false)
+  lastLoginAt        DateTime? @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(6)
+
+  sessions            Session[]  @relation("SessionUser")
+  clientsCreated      Client[]   @relation("ClientCreatedBy")
+  invoicesCreated     Invoice[]  @relation("InvoiceCreatedBy")
+  invoicesSent        Invoice[]  @relation("InvoiceSentBy")
+  paymentsRecorded    Payment[]  @relation("PaymentRecordedBy")
+  paymentsReversed    Payment[]  @relation("PaymentReversedBy")
+  auditLogsAttributed AuditLog[] @relation("AuditLogActor")
+
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+model Session {
+  id                  String    @id @default(uuid()) @db.Uuid
+  userId              String    @db.Uuid
+  tokenHash           String    @unique @db.VarChar(255)
+  familyId            String    @db.Uuid
+  expiresAt           DateTime  @db.Timestamptz(6)
+  revokedAt           DateTime? @db.Timestamptz(6)
+  revocationReason    String?   @db.VarChar(100)
+  lastUsedAt          DateTime? @db.Timestamptz(6)
+  userAgent           String?   @db.VarChar(500)
+  ipAddress           String?   @db.VarChar(64)
+  rotatedAt           DateTime? @db.Timestamptz(6)
+  replacedBySessionId String?   @unique @db.Uuid
+  createdAt           DateTime  @default(now()) @db.Timestamptz(6)
+
+  user                  User     @relation("SessionUser", fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  replacedBySession     Session? @relation("SessionReplacement", fields: [replacedBySessionId], references: [id], onDelete: NoAction, onUpdate: Cascade)
+  replacementForSession Session? @relation("SessionReplacement")
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@index([userId, revokedAt])
+  @@map("sessions")
+}
+
+model BusinessSettings {
+  id                String   @id @default(uuid()) @db.Uuid
+  singletonKey      String   @unique @default("DEFAULT") @db.VarChar(20)
+  legalName         String   @db.VarChar(200)
+  displayName       String   @db.VarChar(200)
+  gstin             String?  @db.VarChar(15)
+  pan               String?  @db.VarChar(10)
+  addressLine1      String   @db.VarChar(200)
+  addressLine2      String?  @db.VarChar(200)
+  city              String   @db.VarChar(100)
+  state             String   @db.VarChar(100)
+  stateCode         String   @db.VarChar(2)
+  postalCode        String   @db.VarChar(10)
+  country           String   @default("India") @db.VarChar(100)
+  email             String?  @db.VarChar(320)
+  phone             String?  @db.VarChar(30)
+  logoStorageKey    String?  @db.VarChar(500)
+  invoicePrefix     String   @default("INV") @db.VarChar(5)
+  defaultDueDays    Int      @default(15)
+  bankAccountName   String?  @db.VarChar(200)
+  bankAccountNumber String?  @db.VarChar(50)
+  bankName          String?  @db.VarChar(200)
+  bankIfsc          String?  @db.VarChar(20)
+  upiId             String?  @db.VarChar(100)
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(6)
+
+  @@map("business_settings")
+}
+
+model Client {
+  id              String    @id @default(uuid()) @db.Uuid
+  name            String    @db.VarChar(200)
+  email           String?   @db.VarChar(320)
+  phone           String?   @db.VarChar(30)
+  gstin           String?   @db.VarChar(15)
+  pan             String?   @db.VarChar(10)
+  addressLine1    String    @db.VarChar(200)
+  addressLine2    String?   @db.VarChar(200)
+  city            String    @db.VarChar(100)
+  state           String    @db.VarChar(100)
+  stateCode       String    @db.VarChar(2)
+  postalCode      String    @db.VarChar(10)
+  country         String    @default("India") @db.VarChar(100)
+  notes           String?   @db.Text
+  isArchived      Boolean   @default(false)
+  archivedAt      DateTime? @db.Timestamptz(6)
+  createdByUserId String?   @db.Uuid
+  createdAt       DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
+
+  createdByUser User?     @relation("ClientCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  invoices      Invoice[]
+
+  @@index([name])
+  @@index([email])
+  @@index([isArchived])
+  @@index([stateCode])
+  @@index([createdAt])
+  @@map("clients")
+}
+
+model Invoice {
+  id                     String        @id @default(uuid()) @db.Uuid
+  clientId               String        @db.Uuid
+  invoiceNumber          String?       @unique @db.VarChar(16)
+  financialYear          String?       @db.VarChar(5)
+  status                 InvoiceStatus @default(DRAFT)
+  invoiceDate            DateTime      @db.Date
+  dueDate                DateTime      @db.Date
+  currency               String        @default("INR") @db.Char(3)
+  placeOfSupplyState     String        @db.VarChar(100)
+  placeOfSupplyStateCode String        @db.VarChar(2)
+  notes                  String?       @db.Text
+  terms                  String?       @db.Text
+  subtotal               Decimal       @default(0) @db.Decimal(12, 2)
+  discountTotal          Decimal       @default(0) @db.Decimal(12, 2)
+  taxableTotal           Decimal       @default(0) @db.Decimal(12, 2)
+  cgstTotal              Decimal       @default(0) @db.Decimal(12, 2)
+  sgstTotal              Decimal       @default(0) @db.Decimal(12, 2)
+  igstTotal              Decimal       @default(0) @db.Decimal(12, 2)
+  total                  Decimal       @default(0) @db.Decimal(12, 2)
+  paidAmount             Decimal       @default(0) @db.Decimal(12, 2)
+  outstandingAmount      Decimal       @default(0) @db.Decimal(12, 2)
+  snapshotVersion        Int           @default(1)
+  businessSnapshot       Json?         @db.JsonB
+  clientSnapshot         Json?         @db.JsonB
+  sentAt                 DateTime?     @db.Timestamptz(6)
+  cancelledAt            DateTime?     @db.Timestamptz(6)
+  cancellationReason     String?       @db.VarChar(500)
+  createdByUserId        String?       @db.Uuid
+  sentByUserId           String?       @db.Uuid
+  createdAt              DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt              DateTime      @updatedAt @db.Timestamptz(6)
+
+  client          Client          @relation(fields: [clientId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdByUser   User?           @relation("InvoiceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  sentByUser      User?           @relation("InvoiceSentBy", fields: [sentByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  items           InvoiceItem[]
+  payments        Payment[]
+  emailDeliveries EmailDelivery[]
+
+  @@index([clientId])
+  @@index([status])
+  @@index([invoiceDate])
+  @@index([dueDate])
+  @@index([financialYear])
+  @@index([createdAt])
+  @@index([status, dueDate])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id             String   @id @default(uuid()) @db.Uuid
+  invoiceId      String   @db.Uuid
+  lineNumber     Int
+  description    String   @db.VarChar(500)
+  sacCode        String?  @db.VarChar(20)
+  quantity       Decimal  @db.Decimal(12, 3)
+  rate           Decimal  @db.Decimal(12, 2)
+  discountAmount Decimal  @default(0) @db.Decimal(12, 2)
+  taxableAmount  Decimal  @db.Decimal(12, 2)
+  gstRate        Decimal  @db.Decimal(5, 2)
+  cgstAmount     Decimal  @default(0) @db.Decimal(12, 2)
+  sgstAmount     Decimal  @default(0) @db.Decimal(12, 2)
+  igstAmount     Decimal  @default(0) @db.Decimal(12, 2)
+  totalAmount    Decimal  @db.Decimal(12, 2)
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([invoiceId, lineNumber])
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+model InvoiceCounter {
+  id            String   @id @default(uuid()) @db.Uuid
+  financialYear String   @db.VarChar(5)
+  prefix        String   @default("INV") @db.VarChar(5)
+  nextSequence  Int      @default(1)
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6)
+
+  @@unique([financialYear, prefix])
+  @@map("invoice_counters")
+}
+
+model Payment {
+  id               String        @id @default(uuid()) @db.Uuid
+  invoiceId        String        @db.Uuid
+  amount           Decimal       @db.Decimal(12, 2)
+  method           PaymentMethod
+  status           PaymentStatus @default(RECORDED)
+  reference        String?       @db.VarChar(200)
+  notes            String?       @db.VarChar(500)
+  idempotencyKey   String?       @unique @db.VarChar(255)
+  paidAt           DateTime      @db.Timestamptz(6)
+  recordedByUserId String?       @db.Uuid
+  reversedAt       DateTime?     @db.Timestamptz(6)
+  reversedByUserId String?       @db.Uuid
+  reversalReason   String?       @db.VarChar(500)
+  createdAt        DateTime      @default(now()) @db.Timestamptz(6)
+
+  invoice        Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  recordedByUser User?   @relation("PaymentRecordedBy", fields: [recordedByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  reversedByUser User?   @relation("PaymentReversedBy", fields: [reversedByUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([invoiceId])
+  @@index([paidAt])
+  @@index([invoiceId, paidAt])
+  @@index([status])
+  @@map("payments")
+}
+
+model EmailDelivery {
+  id                String              @id @default(uuid()) @db.Uuid
+  invoiceId         String              @db.Uuid
+  recipientEmail    String              @db.VarChar(320)
+  status            EmailDeliveryStatus @default(PENDING)
+  provider          String?             @db.VarChar(50)
+  providerMessageId String?             @unique @db.VarChar(255)
+  attemptNumber     Int                 @default(1)
+  attemptedAt       DateTime            @default(now()) @db.Timestamptz(6)
+  acceptedAt        DateTime?           @db.Timestamptz(6)
+  failedAt          DateTime?           @db.Timestamptz(6)
+  failureCode       String?             @db.VarChar(100)
+  failureMessage    String?             @db.VarChar(500)
+  createdAt         DateTime            @default(now()) @db.Timestamptz(6)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([invoiceId])
+  @@index([status])
+  @@index([recipientEmail])
+  @@index([attemptedAt])
+  @@map("email_deliveries")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @db.Uuid
+  action      String   @db.VarChar(100)
+  entityType  String   @db.VarChar(100)
+  entityId    String?  @db.Uuid
+  requestId   String?  @db.VarChar(100)
+  metadata    Json?    @db.JsonB
+  ipAddress   String?  @db.VarChar(64)
+  userAgent   String?  @db.VarChar(500)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  actorUser User? @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([actorUserId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@map("audit_logs")
+}

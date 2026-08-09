@@ -1,0 +1,28 @@
+node_modules/
+.pnpm-store/
+
+# Environment files
+.env
+.env.*
+**/.env
+**/.env.*
+
+# Safe templates
+!.env.example
+!**/.env.example
+
+.next/
+dist/
+build/
+coverage/
+
+*.log
+
+.vscode/
+.idea/
+
+.DS_Store
+Thumbs.db
+
+# Generated Prisma Client
+apps/api/src/generated/prisma/
