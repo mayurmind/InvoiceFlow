@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { resolveRuntimeDatabaseUrl } from './database-url';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -8,6 +9,7 @@ const envSchema = z.object({
     .refine((url) => url.startsWith('postgresql://') || url.startsWith('postgres://'), {
       message: 'DATABASE_URL must be a valid PostgreSQL connection string',
     }),
+  TEST_DATABASE_URL: z.string().optional(),
   PORT: z
     .string()
     .transform((val) => parseInt(val, 10))
@@ -30,7 +32,28 @@ export const parseEnv = (environment: NodeJS.ProcessEnv = process.env) => {
     console.error('❌ Invalid environment variables:', parsed.error.flatten().fieldErrors);
     process.exit(1);
   }
-  return parsed.data;
+
+  try {
+    const { TEST_DATABASE_URL: testDatabaseUrl, ...parsedEnvironment } = parsed.data;
+
+    const databaseUrl = resolveRuntimeDatabaseUrl({
+      nodeEnv: parsedEnvironment.NODE_ENV,
+      databaseUrl: parsedEnvironment.DATABASE_URL,
+      testDatabaseUrl,
+    });
+
+    return {
+      ...parsedEnvironment,
+      DATABASE_URL: databaseUrl,
+    };
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(
+      '❌ Invalid database configuration:',
+      error instanceof Error ? error.message : 'Unknown error',
+    );
+    process.exit(1);
+  }
 };
 
 export const env = parseEnv();
