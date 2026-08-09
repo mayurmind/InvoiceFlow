@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
@@ -19,12 +19,15 @@ export default defineConfig({
         'dist/**',
         'tests/**',
         'vitest.config.ts',
+        'vitest.database.config.ts',
         'eslint.config.js',
         '**/*.d.ts',
         'src/server.ts', // Exclude server.ts as it binds to a port and is meant for runtime execution
         'prisma.config.ts',
+        'prisma.test.config.ts',
         'src/generated/prisma/**',
       ],
     },
+    exclude: [...configDefaults.exclude, 'tests/database/**'],
   },
 });
