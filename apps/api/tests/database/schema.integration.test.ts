@@ -18,7 +18,7 @@ describe('Database Schema & Catalog Integration', () => {
       ORDER BY started_at ASC;
     `;
 
-    expect(migrations.length).toBe(2);
+    expect(migrations.length).toBe(3);
 
     expect(migrations[0].migration_name).toBe('20260808090814_init_database_foundation');
     expect(migrations[0].finished_at).not.toBeNull();
@@ -27,6 +27,10 @@ describe('Database Schema & Catalog Integration', () => {
     expect(migrations[1].migration_name).toBe('20260808094134_add_database_integrity_protections');
     expect(migrations[1].finished_at).not.toBeNull();
     expect(migrations[1].rolled_back_at).toBeNull();
+
+    expect(migrations[2].migration_name).toBe('20260809185441_phase3_auth_session_compatibility');
+    expect(migrations[2].finished_at).not.toBeNull();
+    expect(migrations[2].rolled_back_at).toBeNull();
   });
 
   it('DB-03: Contains 10 core tables', async () => {
@@ -78,7 +82,7 @@ describe('Database Schema & Catalog Integration', () => {
     expect(enumNames.length).toBe(5);
   });
 
-  it('DB-05: Contains 19 exact CHECK constraints', async () => {
+  it('DB-05: Contains 21 exact CHECK constraints', async () => {
     const checks = await prisma.$queryRaw<{ conname: string }[]>`
       SELECT conname
       FROM pg_constraint c
@@ -108,6 +112,8 @@ describe('Database Schema & Catalog Integration', () => {
       'payments_status_check',
       'email_deliveries_attempt_check',
       'email_deliveries_status_check',
+      'sessions_replacement_not_self_check',
+      'sessions_rotation_replacement_consistency_check',
     ];
 
     expect([...checkNames].sort()).toEqual([...expectedChecks].sort());

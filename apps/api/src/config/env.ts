@@ -23,6 +23,13 @@ const envSchema = z.object({
     .string()
     .min(1, 'CORS_ALLOWED_ORIGINS cannot be empty')
     .transform((val) => val.split(',').map((origin) => origin.trim())),
+  ACCESS_TOKEN_SECRET: z.string().min(32, 'ACCESS_TOKEN_SECRET must be at least 32 characters'),
+  REFRESH_TOKEN_SECRET: z.string().min(32, 'REFRESH_TOKEN_SECRET must be at least 32 characters'),
+  CSRF_SECRET: z.string().min(32, 'CSRF_SECRET must be at least 32 characters'),
+  ACCESS_TOKEN_TTL: z.string().default('15m'),
+  REFRESH_TOKEN_TTL: z.string().default('7d'),
+  JWT_ISSUER: z.string().default('invoiceflow-api'),
+  JWT_AUDIENCE: z.string().default('invoiceflow-web'),
 });
 
 export const parseEnv = (environment: NodeJS.ProcessEnv = process.env) => {
