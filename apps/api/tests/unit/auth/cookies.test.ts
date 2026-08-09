@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import {
-  createAuthCookie,
-  clearAuthCookie,
-  parseTimeToMs,
-} from '../../../src/features/auth/cookies';
+import { createAuthCookie, clearAuthCookie } from '../../../src/features/auth/cookies';
 import { env } from '../../../src/config/env';
 
 vi.mock('../../../src/config/env', () => ({
@@ -17,11 +13,6 @@ vi.mock('../../../src/config/env', () => ({
 describe('Cookie Primitives', () => {
   afterEach(() => {
     env.NODE_ENV = 'development';
-  });
-
-  it('parseTimeToMs converts correctly', () => {
-    expect(parseTimeToMs('15m')).toBe(15 * 60 * 1000);
-    expect(parseTimeToMs('7d')).toBe(7 * 24 * 60 * 60 * 1000);
   });
 
   it('createAuthCookie creates development cookies without secure and host prefix', () => {

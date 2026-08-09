@@ -68,3 +68,12 @@ export class RateLimitError extends AppError {
     super(message, 429, 'RATE_LIMITED');
   }
 }
+
+/**
+ * Used for generic login failures to hide credential enumeration.
+ */
+export class AuthenticationFailedError extends AppError {
+  constructor(message = 'Invalid email or password.') {
+    super(message, 401, 'AUTHENTICATION_FAILED');
+  }
+}

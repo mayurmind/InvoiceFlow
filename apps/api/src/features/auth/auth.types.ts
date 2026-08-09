@@ -3,8 +3,6 @@ export interface AccessTokenPayload {
   sid: string;
   role: string;
   type: 'access';
-  iss?: string;
-  aud?: string | string[];
 }
 
 export interface RefreshCredential {
@@ -22,4 +20,21 @@ export interface CookieOptions {
     path: string;
     maxAge: number;
   };
+}
+
+import type { UserRole } from '../../generated/prisma/client';
+
+export interface SanitizedUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: UserRole;
+  mustChangePassword: boolean;
+  lastLoginAt: Date | null;
+}
+
+export interface AuthContext {
+  sessionId: string;
+  user: SanitizedUser;
 }

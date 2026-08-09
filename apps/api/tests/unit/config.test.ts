@@ -138,4 +138,43 @@ describe('Environment Validation', () => {
     exitSpy.mockRestore();
     errorSpy.mockRestore();
   });
+
+  it('fails securely on invalid TTL formats', () => {
+    const invalidEnv: NodeJS.ProcessEnv = {
+      ...baseValidEnv,
+      ACCESS_TOKEN_TTL: 'invalid',
+    };
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit called');
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(() => parseEnv(invalidEnv)).toThrow('process.exit called');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(errorSpy).toHaveBeenCalled();
+
+    exitSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it('fails securely if REFRESH_TOKEN_TTL <= ACCESS_TOKEN_TTL', () => {
+    const invalidEnv: NodeJS.ProcessEnv = {
+      ...baseValidEnv,
+      ACCESS_TOKEN_TTL: '7d',
+      REFRESH_TOKEN_TTL: '1d',
+    };
+
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit called');
+    });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(() => parseEnv(invalidEnv)).toThrow('process.exit called');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(errorSpy).toHaveBeenCalled();
+
+    exitSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
 });
