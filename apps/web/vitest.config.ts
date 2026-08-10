@@ -27,6 +27,16 @@ export default defineConfig({
           setupFiles: ['./src/tests/setup.ts'],
         },
       },
+      {
+        // Shell component smoke tests — F1.4 application shell
+        extends: true,
+        test: {
+          name: 'shell',
+          environment: 'jsdom',
+          include: ['src/tests/shell.test.tsx'],
+          setupFiles: ['./src/tests/setup.ts'],
+        },
+      },
     ],
     globals: true,
     coverage: {
