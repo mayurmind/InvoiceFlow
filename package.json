@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev:api": "pnpm --filter api run dev",
+    "dev:web": "pnpm --filter web run dev",
     "build": "pnpm -r run build",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
