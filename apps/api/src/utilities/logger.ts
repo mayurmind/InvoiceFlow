@@ -3,8 +3,17 @@ import { env } from '../config/env';
 
 const isDev = env.NODE_ENV !== 'production';
 
-export const logger = pino({
+export const loggerOptions = {
   level: env.LOG_LEVEL,
+  redact: {
+    paths: [
+      'req.headers.cookie',
+      'req.headers.authorization',
+      'req.headers["x-csrf-token"]',
+      'res.headers["set-cookie"]',
+    ],
+    censor: '[REDACTED]',
+  },
   transport: isDev
     ? {
         target: 'pino-pretty',
@@ -16,8 +25,10 @@ export const logger = pino({
       }
     : undefined,
   formatters: {
-    level: (label) => {
+    level: (label: string) => {
       return { level: label };
     },
   },
-});
+};
+
+export const logger = pino(loggerOptions);

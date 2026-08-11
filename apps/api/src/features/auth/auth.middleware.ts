@@ -30,6 +30,9 @@ export const authenticateRequest = async (req: Request, _res: Response, next: Ne
     if (session.revokedAt !== null) {
       throw new UnauthorizedError();
     }
+    if (session.rotatedAt !== null || session.replacedBySessionId !== null) {
+      throw new UnauthorizedError();
+    }
     if (session.expiresAt.getTime() <= Date.now()) {
       throw new UnauthorizedError();
     }

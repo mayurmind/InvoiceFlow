@@ -8,10 +8,19 @@ export const getCookieName = (name: 'access' | 'refresh'): string => {
   return `${prefix}${name}`;
 };
 
-export const createAuthCookie = (type: 'access' | 'refresh', value: string): CookieOptions => {
-  const maxAgeMs = parseDurationToMs(
-    type === 'access' ? env.ACCESS_TOKEN_TTL : env.REFRESH_TOKEN_TTL,
-  );
+export const createAuthCookie = (
+  type: 'access' | 'refresh',
+  value: string,
+  maxAgeMsOverride?: number,
+): CookieOptions => {
+  let maxAgeMs = maxAgeMsOverride;
+
+  if (maxAgeMs === undefined) {
+    maxAgeMs = parseDurationToMs(type === 'access' ? env.ACCESS_TOKEN_TTL : env.REFRESH_TOKEN_TTL);
+  } else if (!Number.isSafeInteger(maxAgeMs) || maxAgeMs <= 0) {
+    throw new Error('Invalid maxAgeMs override');
+  }
+
   const isProd = env.NODE_ENV === 'production';
 
   return {

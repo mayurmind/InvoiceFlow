@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import pino from 'pino';
+import { Writable } from 'stream';
+import { loggerOptions } from '../../src/utilities/logger';
 import request from 'supertest';
 import { app } from '../../src/app';
 import * as authRepo from '../../src/features/auth/auth.repository';
@@ -23,6 +26,8 @@ vi.mock('../../src/config/env', async (importOriginal) => {
       CORS_ALLOWED_ORIGINS: ['http://localhost:3000'],
       ACCESS_TOKEN_TTL: '15m',
       REFRESH_TOKEN_TTL: '7d',
+      NODE_ENV: 'production',
+      LOG_LEVEL: 'info',
     },
   };
 });
@@ -244,6 +249,8 @@ describe('Auth Security', () => {
         id: 's1',
         userId: 'u1',
         revokedAt: null,
+        rotatedAt: null,
+        replacedBySessionId: null,
         expiresAt: new Date(Date.now() + 100000),
       } as Session);
       vi.mocked(authRepo.getUserById).mockResolvedValue({
@@ -264,6 +271,8 @@ describe('Auth Security', () => {
         id: 's1',
         userId: 'u1',
         revokedAt: new Date(),
+        rotatedAt: null,
+        replacedBySessionId: null,
         expiresAt: new Date(Date.now() + 100000),
       } as Session);
       const res = await request(app)
@@ -279,6 +288,8 @@ describe('Auth Security', () => {
         id: 's1',
         userId: 'u1',
         revokedAt: null,
+        rotatedAt: null,
+        replacedBySessionId: null,
         expiresAt: new Date(Date.now() - 10000),
       } as Session); // expired
       const res = await request(app)
@@ -315,6 +326,57 @@ describe('Auth Security', () => {
         .set('Cookie', ['invoiceflow-access=valid-token']);
       expect(res.status).toBe(401);
       expect(res.body.error.message).toBe('Unauthorized');
+    });
+  });
+
+  describe('Logger Redaction', () => {
+    it('redacts sensitive request and response headers via real pino-http', async () => {
+      let loggedOutput = '';
+      const stream = new Writable({
+        write(chunk, encoding, callback) {
+          void encoding;
+          loggedOutput += chunk.toString();
+          callback();
+        },
+      });
+
+      const testLogger = pino(loggerOptions, stream);
+
+      const pinoHttp = (await import('pino-http')).default({
+        logger: testLogger,
+        autoLogging: true,
+      });
+
+      const express = (await import('express')).default;
+      const testApp = express();
+
+      testApp.use(pinoHttp);
+      testApp.get('/test', (req, res) => {
+        void req;
+        res.setHeader('set-cookie', [
+          'invoiceflow-access=SENTINEL_RESPONSE_ACCESS_SECRET; Path=/; HttpOnly; SameSite=Lax',
+          'invoiceflow-refresh=SENTINEL_RESPONSE_REFRESH_SECRET; Path=/; HttpOnly; SameSite=Lax',
+        ]);
+        res.send('ok');
+      });
+
+      await request(testApp)
+        .get('/test')
+        .set(
+          'Cookie',
+          'invoiceflow-access=SENTINEL_ACCESS_SECRET; invoiceflow-refresh=SENTINEL_REFRESH_SECRET',
+        )
+        .set('Authorization', 'Bearer SENTINEL_AUTHORIZATION_SECRET')
+        .set('x-csrf-token', 'SENTINEL_CSRF_SECRET');
+
+      expect(loggedOutput).not.toContain('SENTINEL_ACCESS_SECRET');
+      expect(loggedOutput).not.toContain('SENTINEL_REFRESH_SECRET');
+      expect(loggedOutput).not.toContain('SENTINEL_AUTHORIZATION_SECRET');
+      expect(loggedOutput).not.toContain('SENTINEL_CSRF_SECRET');
+      expect(loggedOutput).not.toContain('SENTINEL_RESPONSE_ACCESS_SECRET');
+      expect(loggedOutput).not.toContain('SENTINEL_RESPONSE_REFRESH_SECRET');
+
+      expect(loggedOutput).toContain('[REDACTED]');
     });
   });
 });

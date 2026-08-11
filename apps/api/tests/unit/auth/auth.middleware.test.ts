@@ -34,6 +34,8 @@ describe('authenticateRequest', () => {
       id: 'session-1',
       userId: 'user-1',
       revokedAt: null,
+      rotatedAt: null,
+      replacedBySessionId: null,
       expiresAt: new Date(Date.now() + 10000),
     } as Session);
     vi.mocked(authRepo.getUserById).mockResolvedValue({
@@ -81,7 +83,35 @@ describe('authenticateRequest', () => {
       id: 'session-1',
       userId: 'user-1',
       revokedAt: null,
+      rotatedAt: null,
+      replacedBySessionId: null,
       expiresAt: new Date(Date.now() - 10000), // Expired 10s ago
+    } as Session);
+    await authenticateRequest(mockReq as Request, mockRes, mockNext);
+    expect(mockNext.mock.calls[0][0].message).toBe('Unauthorized');
+  });
+
+  it('rejects if session is rotated (rotatedAt !== null)', async () => {
+    vi.mocked(authRepo.getSessionById).mockResolvedValue({
+      id: 'session-1',
+      userId: 'user-1',
+      revokedAt: null,
+      rotatedAt: new Date(),
+      replacedBySessionId: null,
+      expiresAt: new Date(Date.now() + 10000),
+    } as Session);
+    await authenticateRequest(mockReq as Request, mockRes, mockNext);
+    expect(mockNext.mock.calls[0][0].message).toBe('Unauthorized');
+  });
+
+  it('rejects if session is replaced (replacedBySessionId !== null)', async () => {
+    vi.mocked(authRepo.getSessionById).mockResolvedValue({
+      id: 'session-1',
+      userId: 'user-1',
+      revokedAt: null,
+      rotatedAt: null,
+      replacedBySessionId: 'new-session-id',
+      expiresAt: new Date(Date.now() + 10000),
     } as Session);
     await authenticateRequest(mockReq as Request, mockRes, mockNext);
     expect(mockNext.mock.calls[0][0].message).toBe('Unauthorized');

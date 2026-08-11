@@ -1,5 +1,5 @@
 import { Prisma } from '../../generated/prisma/client';
-import type { User } from '../../generated/prisma/client';
+import type { User, Session } from '../../generated/prisma/client';
 import { prisma } from '../../database/prisma';
 import type { ITXClient } from '../../database/transaction';
 import { SanitizedUser } from './auth.types';
@@ -103,3 +103,78 @@ export const mapUserToSanitized = (user: User): SanitizedUser => ({
   mustChangePassword: user.mustChangePassword,
   lastLoginAt: user.lastLoginAt,
 });
+
+export const getSessionByHash = async (tokenHash: string) => {
+  return prisma.session.findUnique({
+    where: { tokenHash },
+  });
+};
+
+export const getSessionForUpdate = async (tx: ITXClient, sessionId: string) => {
+  const sessions = await tx.$queryRaw<Session[]>`
+    SELECT
+      "id",
+      "userId",
+      "tokenHash",
+      "familyId",
+      "expiresAt",
+      "revokedAt",
+      "revocationReason",
+      "lastUsedAt",
+      "userAgent",
+      "ipAddress",
+      "rotatedAt",
+      "replacedBySessionId",
+      "createdAt"
+    FROM "sessions"
+    WHERE "id" = ${sessionId}::uuid
+    FOR UPDATE
+  `;
+  return sessions[0] ?? null;
+};
+
+export const invalidateFamily = async (
+  tx: ITXClient,
+  familyId: string,
+  reason: string,
+  revokedAt: Date,
+) => {
+  return tx.session.updateMany({
+    where: { familyId, revokedAt: null },
+    data: {
+      revokedAt,
+      revocationReason: reason,
+    },
+  });
+};
+
+export const invalidateAllUserSessions = async (
+  tx: ITXClient,
+  userId: string,
+  reason: string,
+  revokedAt: Date,
+) => {
+  return tx.session.updateMany({
+    where: { userId, revokedAt: null },
+    data: {
+      revokedAt,
+      revocationReason: reason,
+    },
+  });
+};
+
+export const replaceSession = async (
+  tx: ITXClient,
+  oldSessionId: string,
+  newSessionId: string,
+  rotationAt: Date,
+) => {
+  return tx.session.update({
+    where: { id: oldSessionId },
+    data: {
+      rotatedAt: rotationAt,
+      replacedBySessionId: newSessionId,
+      lastUsedAt: rotationAt,
+    },
+  });
+};

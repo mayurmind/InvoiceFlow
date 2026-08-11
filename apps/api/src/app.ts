@@ -24,7 +24,7 @@ app.use(
   cors({
     origin: env.CORS_ALLOWED_ORIGINS,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', REQUEST_ID_HEADER],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', REQUEST_ID_HEADER],
     exposedHeaders: [REQUEST_ID_HEADER],
     credentials: true,
   }),

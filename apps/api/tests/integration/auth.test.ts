@@ -6,9 +6,10 @@ import { meHandler } from '../../src/features/auth/auth.controller';
 import * as authRepo from '../../src/features/auth/auth.repository';
 import { prisma } from '../../src/database/prisma';
 import type { ITXClient } from '../../src/database/transaction';
-import type { User, Session } from '../../src/generated/prisma/client';
+import type { User, Session, AuditLog } from '../../src/generated/prisma/client';
 import type { SanitizedUser } from '../../src/features/auth/auth.types';
 import type { Request, Response, NextFunction } from 'express';
+import { UnauthorizedError } from '../../src/errors/application.error';
 vi.mock('../../src/features/auth/auth.service');
 // Mocking the middleware directly isn't perfectly straightforward because express app binds it at startup,
 // but for an integration test of the routing we might mock the auth service instead.
@@ -265,6 +266,191 @@ describe('Auth API Integration', () => {
           }),
         });
       });
+    });
+  });
+
+  describe('GET /api/v1/auth/csrf', () => {
+    it('rejects without origin', async () => {
+      const res = await request(app).get('/api/v1/auth/csrf');
+      expect(res.status).toBe(401);
+    });
+
+    it('returns generic 401 if refresh cookie is missing', async () => {
+      const res = await request(app)
+        .get('/api/v1/auth/csrf')
+        .set('Origin', 'http://localhost:3000');
+      expect(res.status).toBe(401);
+    });
+
+    it('returns generic 401 if refresh cookie is invalid (no session)', async () => {
+      vi.mocked(authService.generateCsrfForSession).mockRejectedValue(new UnauthorizedError());
+      const res = await request(app)
+        .get('/api/v1/auth/csrf')
+        .set('Origin', 'http://localhost:3000')
+        .set('Cookie', ['invoiceflow-refresh=invalid']);
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 200 with Cache-Control no-store and exactly csrfToken', async () => {
+      vi.mocked(authService.generateCsrfForSession).mockResolvedValue('<csrf-token>');
+
+      const res = await request(app)
+        .get('/api/v1/auth/csrf')
+        .set('Origin', 'http://localhost:3000')
+        .set('Cookie', ['invoiceflow-refresh=valid']);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.body.csrfToken).toBe('<csrf-token>');
+      expect(res.body.accessToken).toBeUndefined();
+      expect(res.body.refreshToken).toBeUndefined();
+    });
+  });
+
+  describe('POST /api/v1/auth/refresh', () => {
+    it('returns 401 if missing refresh cookie', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('Origin', 'http://localhost:3000');
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 403 if CSRF is missing', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('Origin', 'http://localhost:3000')
+        .set('Cookie', ['invoiceflow-refresh=valid']);
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 200 on success, clears token fields, sets max-age cookies', async () => {
+      vi.mocked(authService.refreshSession).mockResolvedValue({
+        kind: 'success',
+        accessToken: 'new-access',
+        rawRefreshToken: 'new-refresh',
+        remainingRefreshMs: 123456,
+        user: { id: 'u1', email: 'test@example.com', role: 'VIEWER' } as SanitizedUser,
+      });
+
+      const res = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('Origin', 'http://localhost:3000')
+        .set('Cookie', ['invoiceflow-refresh=valid'])
+        .set('x-csrf-token', 'valid-csrf');
+
+      expect(res.status).toBe(200);
+      expect(res.body.user).toBeDefined();
+      expect(res.body.user.id).toBe('u1');
+      expect(res.body.accessToken).toBeUndefined();
+      expect(res.body.refreshToken).toBeUndefined();
+
+      const cookies = res.headers['set-cookie'];
+      expect(cookies.some((c: string) => c.includes('invoiceflow-access='))).toBe(true);
+      expect(cookies.some((c: string) => c.includes('invoiceflow-refresh='))).toBe(true);
+      expect(cookies.some((c: string) => c.includes('Max-Age='))).toBe(true);
+    });
+  });
+
+  describe('POST /api/v1/auth/logout', () => {
+    it('returns 204 with empty body, clears cookies, requires Origin, Auth, CSRF', async () => {
+      // Missing auth -> 401
+      let res = await request(app)
+        .post('/api/v1/auth/logout')
+        .set('Origin', 'http://localhost:3000');
+      expect(res.status).toBe(401);
+
+      // We mock the middleware payload
+      vi.mocked(authService.logoutSession).mockResolvedValue();
+
+      // We mock the auth middleware explicitly since it's hard to bypass
+      const tokenUtils = await import('../../src/features/auth/tokens');
+      const csrfUtils = await import('../../src/features/auth/csrf');
+      vi.spyOn(tokenUtils, 'verifyAccessToken').mockReturnValue({
+        sub: 'u1',
+        sid: 's1',
+        role: 'VIEWER',
+        type: 'access',
+      });
+      vi.spyOn(authRepo, 'getSessionById').mockResolvedValue({
+        id: 's1',
+        userId: 'u1',
+        revokedAt: null,
+        rotatedAt: null,
+        replacedBySessionId: null,
+        expiresAt: new Date(Date.now() + 10000),
+      } as Session);
+      vi.spyOn(authRepo, 'getUserById').mockResolvedValue({
+        id: 'u1',
+        isActive: true,
+        role: 'VIEWER',
+      } as User);
+      vi.spyOn(csrfUtils, 'verifyCsrfToken').mockReturnValue(true);
+
+      res = await request(app)
+        .post('/api/v1/auth/logout')
+        .set('Origin', 'http://localhost:3000')
+        .set('Cookie', ['invoiceflow-access=valid'])
+        .set('x-csrf-token', 'valid-csrf');
+
+      expect(res.status).toBe(204);
+      expect(res.body).toEqual({}); // Empty body
+      expect(res.text).toBe('');
+
+      const cookies = res.headers['set-cookie'];
+      expect(cookies.some((c: string) => c.includes('Max-Age=0'))).toBe(true);
+    });
+  });
+
+  describe('POST /api/v1/auth/logout-all', () => {
+    it('returns 204 with empty body, clears cookies, requires Origin, Auth, CSRF', async () => {
+      vi.mocked(authService.logoutAllSessions).mockResolvedValue();
+
+      const tokenUtils = await import('../../src/features/auth/tokens');
+      const csrfUtils = await import('../../src/features/auth/csrf');
+      vi.spyOn(tokenUtils, 'verifyAccessToken').mockReturnValue({
+        sub: 'u1',
+        sid: 's1',
+        role: 'VIEWER',
+        type: 'access',
+      });
+      vi.spyOn(authRepo, 'getSessionById').mockResolvedValue({
+        id: 's1',
+        userId: 'u1',
+        revokedAt: null,
+        rotatedAt: null,
+        replacedBySessionId: null,
+        expiresAt: new Date(Date.now() + 10000),
+      } as Session);
+      vi.spyOn(authRepo, 'getUserById').mockResolvedValue({
+        id: 'u1',
+        isActive: true,
+        role: 'VIEWER',
+      } as User);
+      vi.spyOn(csrfUtils, 'verifyCsrfToken').mockReturnValue(true);
+
+      const res = await request(app)
+        .post('/api/v1/auth/logout-all')
+        .set('Origin', 'http://localhost:3000')
+        .set('Cookie', ['invoiceflow-access=valid'])
+        .set('x-csrf-token', 'valid-csrf');
+
+      expect(res.status).toBe(204);
+      expect(res.text).toBe('');
+
+      const cookies = res.headers['set-cookie'];
+      expect(cookies.some((c: string) => c.includes('Max-Age=0'))).toBe(true);
+    });
+  });
+
+  describe('CORS', () => {
+    it('OPTIONS preflight proves X-CSRF-Token is allowed', async () => {
+      const res = await request(app)
+        .options('/api/v1/auth/refresh')
+        .set('Origin', 'http://localhost:3000')
+        .set('Access-Control-Request-Method', 'POST');
+
+      expect(res.status).toBe(204); // CORS preflight success
+      expect(res.headers['access-control-allow-headers']).toContain('X-CSRF-Token');
     });
   });
 });

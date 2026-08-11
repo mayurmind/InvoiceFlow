@@ -1,7 +1,11 @@
 import crypto from 'node:crypto';
 import { env } from '../../config/env';
 import { runInTransaction } from '../../database/transaction';
-import { AuthenticationFailedError } from '../../errors/application.error';
+import {
+  AuthenticationFailedError,
+  UnauthorizedError,
+  ForbiddenError,
+} from '../../errors/application.error';
 import { parseDurationToMs } from '../../utilities/duration';
 import { verifyPassword } from './password';
 import { generateAccessToken, generateRefreshCredential } from './tokens';
@@ -13,7 +17,14 @@ import {
   updateUserLastLogin,
   createAuditLog,
   mapUserToSanitized,
+  getSessionByHash,
+  getSessionForUpdate,
+  invalidateFamily,
+  invalidateAllUserSessions,
+  replaceSession,
 } from './auth.repository';
+import { hashRefreshCredential } from './tokens';
+import { verifyCsrfToken, generateCsrfToken } from './csrf';
 
 // Precomputed valid Argon2id hash for timing equalization.
 // Uses m=19456, t=2, p=1 to match P3.1 password parameters.
@@ -122,4 +133,225 @@ export const login = async (
   });
 
   return result;
+};
+
+export const refreshSession = async (
+  rawRefreshToken: string,
+  csrfToken: string,
+  clientInfo: { ip?: string; userAgent?: string; requestId?: string },
+) => {
+  const boundedIp = clientInfo.ip?.slice(0, 64);
+  const boundedUa = clientInfo.userAgent?.slice(0, 500);
+
+  if (
+    typeof rawRefreshToken !== 'string' ||
+    rawRefreshToken.length !== 64 ||
+    !/^[A-Za-z0-9_-]+$/.test(rawRefreshToken)
+  ) {
+    throw new UnauthorizedError();
+  }
+  const tokenHash = hashRefreshCredential(rawRefreshToken);
+  const candidateSession = await getSessionByHash(tokenHash);
+
+  if (!candidateSession) {
+    throw new UnauthorizedError();
+  }
+
+  const isValidCsrf = verifyCsrfToken(candidateSession.id, csrfToken);
+  if (!isValidCsrf) {
+    throw new ForbiddenError();
+  }
+
+  const refreshCredential = generateRefreshCredential();
+
+  const result = await runInTransaction(async (tx) => {
+    // User -> Session locking
+    const lockedUser = await getUserForUpdate(tx, candidateSession.userId);
+    const lockedSession = await getSessionForUpdate(tx, candidateSession.id);
+
+    // Revalidate inside transaction
+    const rotationAt = new Date();
+
+    if (!lockedSession) {
+      throw new UnauthorizedError();
+    }
+    if (!lockedUser) {
+      throw new UnauthorizedError();
+    }
+    if (lockedSession.userId !== lockedUser.id) {
+      throw new UnauthorizedError();
+    }
+    if (lockedSession.tokenHash !== tokenHash) {
+      throw new UnauthorizedError();
+    }
+    if (lockedUser.isActive !== true) {
+      throw new UnauthorizedError();
+    }
+    if (lockedSession.revokedAt !== null) {
+      throw new UnauthorizedError();
+    }
+    if (lockedSession.expiresAt.getTime() <= rotationAt.getTime()) {
+      throw new UnauthorizedError();
+    }
+
+    const remainingRefreshMs = lockedSession.expiresAt.getTime() - rotationAt.getTime();
+    if (!Number.isSafeInteger(remainingRefreshMs) || remainingRefreshMs <= 0) {
+      throw new UnauthorizedError();
+    }
+
+    // Replay only when otherwise eligible locked Session has rotated or replaced
+    if (lockedSession.rotatedAt !== null || lockedSession.replacedBySessionId !== null) {
+      const replayAt = new Date();
+      await invalidateFamily(tx, lockedSession.familyId, 'REFRESH_TOKEN_REUSE', replayAt);
+
+      await createAuditLog(tx, {
+        action: 'AUTH_REFRESH_REPLAY_DETECTED',
+        actorUserId: null,
+        entityType: 'SESSION',
+        entityId: lockedSession.id,
+        ipAddress: boundedIp,
+        userAgent: boundedUa,
+        requestId: clientInfo.requestId,
+      });
+
+      return { kind: 'replay' as const };
+    }
+
+    // Create new child session
+    const newSession = await createSession(tx, {
+      userId: lockedUser.id,
+      tokenHash: refreshCredential.hash,
+      familyId: lockedSession.familyId,
+      expiresAt: lockedSession.expiresAt,
+      lastUsedAt: rotationAt,
+      ipAddress: boundedIp,
+      userAgent: boundedUa,
+    });
+
+    // Parent atomic update
+    await replaceSession(tx, lockedSession.id, newSession.id, rotationAt);
+
+    // Generate JWT INSIDE transaction
+    const accessToken = generateAccessToken({
+      sub: lockedUser.id,
+      sid: newSession.id,
+      role: lockedUser.role,
+    });
+
+    await createAuditLog(tx, {
+      action: 'AUTH_REFRESH_SUCCEEDED',
+      actorUserId: lockedUser.id,
+      entityType: 'SESSION',
+      entityId: newSession.id,
+      ipAddress: boundedIp,
+      userAgent: boundedUa,
+      requestId: clientInfo.requestId,
+    });
+
+    return {
+      kind: 'success' as const,
+      user: mapUserToSanitized(lockedUser),
+      accessToken,
+      rawRefreshToken: refreshCredential.raw,
+      remainingRefreshMs,
+    };
+  });
+
+  if (result.kind === 'replay') {
+    throw new UnauthorizedError();
+  }
+
+  return result;
+};
+
+export const logoutSession = async (
+  sessionId: string,
+  userId: string,
+  clientInfo: { ip?: string; userAgent?: string; requestId?: string },
+) => {
+  const boundedIp = clientInfo.ip?.slice(0, 64);
+  const boundedUa = clientInfo.userAgent?.slice(0, 500);
+
+  await runInTransaction(async (tx) => {
+    // User lock -> current Session lock
+    const lockedUser = await getUserForUpdate(tx, userId);
+    if (!lockedUser) return;
+
+    const lockedSession = await getSessionForUpdate(tx, sessionId);
+    if (!lockedSession) return;
+
+    if (lockedSession.userId !== lockedUser.id) return;
+
+    const logoutAt = new Date();
+    await invalidateFamily(tx, lockedSession.familyId, 'USER_LOGOUT', logoutAt);
+
+    await createAuditLog(tx, {
+      action: 'AUTH_LOGOUT',
+      actorUserId: lockedUser.id,
+      entityType: 'SESSION',
+      entityId: lockedSession.id,
+      ipAddress: boundedIp,
+      userAgent: boundedUa,
+      requestId: clientInfo.requestId,
+    });
+  });
+};
+
+export const logoutAllSessions = async (
+  userId: string,
+  clientInfo: { ip?: string; userAgent?: string; requestId?: string },
+) => {
+  const boundedIp = clientInfo.ip?.slice(0, 64);
+  const boundedUa = clientInfo.userAgent?.slice(0, 500);
+
+  await runInTransaction(async (tx) => {
+    const lockedUser = await getUserForUpdate(tx, userId);
+    if (!lockedUser) return;
+
+    const logoutAllAt = new Date();
+    await invalidateAllUserSessions(tx, userId, 'USER_LOGOUT_ALL', logoutAllAt);
+
+    await createAuditLog(tx, {
+      action: 'AUTH_LOGOUT_ALL',
+      actorUserId: userId,
+      entityType: 'USER',
+      entityId: userId,
+      ipAddress: boundedIp,
+      userAgent: boundedUa,
+      requestId: clientInfo.requestId,
+    });
+  });
+};
+
+export const generateCsrfForSession = async (rawRefreshToken: string) => {
+  if (
+    typeof rawRefreshToken !== 'string' ||
+    rawRefreshToken.length !== 64 ||
+    !/^[A-Za-z0-9_-]+$/.test(rawRefreshToken)
+  ) {
+    throw new UnauthorizedError();
+  }
+  const tokenHash = hashRefreshCredential(rawRefreshToken);
+  const { getSessionByHash, getUserById } = await import('./auth.repository');
+  const session = await getSessionByHash(tokenHash);
+
+  if (!session) {
+    throw new UnauthorizedError();
+  }
+  if (session.revokedAt !== null) {
+    throw new UnauthorizedError();
+  }
+  if (session.expiresAt.getTime() <= Date.now()) {
+    throw new UnauthorizedError();
+  }
+  if (session.rotatedAt !== null || session.replacedBySessionId !== null) {
+    throw new UnauthorizedError();
+  }
+
+  const user = await getUserById(session.userId);
+  if (!user || user.isActive !== true) {
+    throw new UnauthorizedError();
+  }
+
+  return generateCsrfToken(session.id);
 };

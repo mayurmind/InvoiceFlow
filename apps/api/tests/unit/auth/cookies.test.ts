@@ -39,4 +39,40 @@ describe('Cookie Primitives', () => {
     expect(cookie.value).toBe('');
     expect(cookie.options.maxAge).toBe(0);
   });
+
+  describe('maxAgeMsOverride', () => {
+    it('uses normal defaults if not provided', () => {
+      const cookie = createAuthCookie('access', 'token');
+      expect(cookie.options.maxAge).toBe(15 * 60 * 1000); // 15m
+    });
+
+    it('uses valid override if provided', () => {
+      const cookie = createAuthCookie('refresh', 'token', 5000);
+      expect(cookie.options.maxAge).toBe(5000);
+    });
+
+    it('supports 1ms override', () => {
+      const cookie = createAuthCookie('refresh', 'token', 1);
+      expect(cookie.options.maxAge).toBe(1);
+    });
+
+    it('rejects zero', () => {
+      expect(() => createAuthCookie('refresh', 'token', 0)).toThrow('Invalid maxAgeMs override');
+    });
+
+    it('rejects negative', () => {
+      expect(() => createAuthCookie('refresh', 'token', -5000)).toThrow(
+        'Invalid maxAgeMs override',
+      );
+    });
+
+    it('rejects unsafe integer', () => {
+      expect(() => createAuthCookie('refresh', 'token', Number.MAX_SAFE_INTEGER + 1)).toThrow(
+        'Invalid maxAgeMs override',
+      );
+      expect(() => createAuthCookie('refresh', 'token', 5000.5)).toThrow(
+        'Invalid maxAgeMs override',
+      );
+    });
+  });
 });
