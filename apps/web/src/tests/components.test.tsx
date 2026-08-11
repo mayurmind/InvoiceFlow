@@ -18,6 +18,38 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageContainer } from '@/components/layout/page-container';
 import { PageHeader } from '@/components/layout/page-header';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableCaption,
+} from '@/components/ui/table';
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
+import {
+  Form,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormControl,
+  FormMessage,
+} from '@/components/ui/form';
+import { useForm } from 'react-hook-form';
 
 // ── Button ──────────────────────────────────────────────────────────
 describe('Button', () => {
@@ -120,5 +152,105 @@ describe('PageHeader', () => {
   it('renders description when provided', () => {
     render(<PageHeader heading="Invoices" description="Manage all invoices." />);
     expect(screen.getByText('Manage all invoices.')).toBeDefined();
+  });
+});
+
+// ── Table ─────────────────────────────────────────────────────────────
+describe('Table', () => {
+  it('renders table elements', () => {
+    render(
+      <Table>
+        <TableCaption>A list of your recent invoices.</TableCaption>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Invoice</TableHead>
+            <TableHead>Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow>
+            <TableCell>INV001</TableCell>
+            <TableCell>Paid</TableCell>
+          </TableRow>
+        </TableBody>
+        <TableFooter>
+          <TableRow>
+            <TableCell>Total</TableCell>
+            <TableCell>$250.00</TableCell>
+          </TableRow>
+        </TableFooter>
+      </Table>,
+    );
+    expect(screen.getByText('A list of your recent invoices.')).toBeDefined();
+    expect(screen.getByText('INV001')).toBeDefined();
+  });
+});
+
+// ── Dialog ────────────────────────────────────────────────────────────
+describe('Dialog', () => {
+  it('renders dialog elements without crashing', () => {
+    render(
+      <Dialog>
+        <DialogTrigger>Open Dialog</DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Are you absolutely sure?</DialogTitle>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>,
+    );
+    expect(screen.getByText('Open Dialog')).toBeDefined();
+  });
+});
+
+// ── DropdownMenu ──────────────────────────────────────────────────────
+describe('DropdownMenu', () => {
+  it('renders dropdown menu elements without crashing', () => {
+    render(
+      <DropdownMenu>
+        <DropdownMenuTrigger>Open Menu</DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem>Profile</DropdownMenuItem>
+          <DropdownMenuItem>Billing</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+    expect(screen.getByText('Open Menu')).toBeDefined();
+  });
+});
+
+// ── Form ──────────────────────────────────────────────────────────────
+describe('Form', () => {
+  it('renders form elements without crashing', () => {
+    const TestForm = () => {
+      const form = useForm({
+        defaultValues: {
+          username: '',
+        },
+      });
+
+      return (
+        <Form {...form}>
+          <form>
+            <FormField
+              control={form.control}
+              name="username"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Username</FormLabel>
+                  <FormControl>
+                    <Input placeholder="shadcn" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </form>
+        </Form>
+      );
+    };
+
+    render(<TestForm />);
+    expect(screen.getByText('Username')).toBeDefined();
   });
 });
