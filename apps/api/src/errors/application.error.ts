@@ -77,3 +77,12 @@ export class AuthenticationFailedError extends AppError {
     super(message, 401, 'AUTHENTICATION_FAILED');
   }
 }
+
+/**
+ * Used when a request conflicts with current state (e.g. duplicate resource).
+ */
+export class ConflictError extends AppError {
+  constructor(message = 'Conflict') {
+    super(message, 409, 'CONFLICT');
+  }
+}
