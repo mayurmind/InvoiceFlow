@@ -272,4 +272,207 @@ describe('Users Database Integration Tests', () => {
     // Unrelated user unaffected
     expect(u2!.role).toBe(UserRole.STAFF);
   });
+
+  it('Exact USER_DEACTIVATED audit', async () => {
+    const admin = await setupAdmin();
+    const user = await usersService.provisionUser({ ...baseInput, actorUserId: admin.id });
+
+    const session = await prisma.session.create({
+      data: {
+        id: '11111111-1111-1111-1111-111111111111',
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 100000),
+        userAgent: 'test',
+        ipAddress: '127.0.0.1',
+        tokenHash: 'dummy',
+        familyId: '55555555-5555-5555-5555-555555555555',
+      },
+    });
+
+    const updated = await usersService.updateUserStatus({
+      targetUserId: user.id,
+      isActive: false,
+      actorUserId: admin.id,
+      requestId: 'req-status-1',
+      ipAddress: '192.168.1.1',
+      userAgent: 'status-agent',
+    });
+
+    expect(updated.isActive).toBe(false);
+
+    const dbSession = await prisma.session.findUnique({ where: { id: session.id } });
+    expect(dbSession!.revokedAt).not.toBeNull();
+
+    const auditLogs = await prisma.auditLog.findMany({ orderBy: { createdAt: 'asc' } });
+    expect(auditLogs).toHaveLength(2);
+
+    const audit = auditLogs[1];
+    expect(audit.action).toBe('USER_DEACTIVATED');
+    expect(audit.actorUserId).toBe(admin.id);
+    expect(audit.entityType).toBe('USER');
+    expect(audit.entityId).toBe(user.id);
+    expect(audit.metadata).toEqual({
+      previousIsActive: true,
+      newIsActive: false,
+    });
+    expect(audit.requestId).toBe('req-status-1');
+    expect(audit.ipAddress).toBe('192.168.1.1');
+    expect(audit.userAgent).toBe('status-agent');
+  });
+
+  it('Reactivation / session non-resurrection', async () => {
+    const admin = await setupAdmin();
+    const user = await usersService.provisionUser({ ...baseInput, actorUserId: admin.id });
+
+    const session = await prisma.session.create({
+      data: {
+        id: '22222222-2222-2222-2222-222222222222',
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 100000),
+        userAgent: 'test',
+        ipAddress: '127.0.0.1',
+        tokenHash: 'dummy',
+        familyId: '55555555-5555-5555-5555-555555555555',
+      },
+    });
+
+    await usersService.updateUserStatus({
+      targetUserId: user.id,
+      isActive: false,
+      actorUserId: admin.id,
+      requestId: 'req-deact',
+      ipAddress: '1.1.1.1',
+      userAgent: 'ua1',
+    });
+
+    const revokedSession = await prisma.session.findUnique({ where: { id: session.id } });
+    expect(revokedSession!.revokedAt).not.toBeNull();
+
+    await usersService.updateUserStatus({
+      targetUserId: user.id,
+      isActive: true,
+      actorUserId: admin.id,
+      requestId: 'req-react',
+      ipAddress: '2.2.2.2',
+      userAgent: 'ua2',
+    });
+
+    const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(dbUser!.isActive).toBe(true);
+
+    const auditLogs = await prisma.auditLog.findMany({ orderBy: { createdAt: 'asc' } });
+    const reactivateAudit = auditLogs[2];
+
+    expect(reactivateAudit.action).toBe('USER_REACTIVATED');
+    expect(reactivateAudit.metadata).toEqual({
+      previousIsActive: false,
+      newIsActive: true,
+    });
+
+    const finalSession = await prisma.session.findUnique({ where: { id: session.id } });
+    expect(finalSession!.revokedAt).toEqual(revokedSession!.revokedAt);
+    expect(finalSession!.revocationReason).toEqual(revokedSession!.revocationReason);
+    expect(finalSession!.rotatedAt).toEqual(revokedSession!.rotatedAt);
+    expect(finalSession!.replacedBySessionId).toEqual(revokedSession!.replacedBySessionId);
+
+    const sessionCount = await prisma.session.count({ where: { userId: user.id } });
+    expect(sessionCount).toBe(1);
+  });
+
+  it('Same-state active -> active complete no-op', async () => {
+    const admin = await setupAdmin();
+    const user = await usersService.provisionUser({ ...baseInput, actorUserId: admin.id });
+
+    await prisma.session.create({
+      data: {
+        id: '33333333-3333-3333-3333-333333333333',
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 100000),
+        userAgent: 'test',
+        ipAddress: '127.0.0.1',
+        tokenHash: 'dummy',
+        familyId: '55555555-5555-5555-5555-555555555555',
+      },
+    });
+
+    const beforeUser = await prisma.user.findUnique({ where: { id: user.id } });
+    const beforeSessionCount = await prisma.session.count();
+    const beforeAuditCount = await prisma.auditLog.count();
+    const beforeSession = await prisma.session.findUnique({
+      where: { id: '33333333-3333-3333-3333-333333333333' },
+    });
+
+    const returnedUser = await usersService.updateUserStatus({
+      targetUserId: user.id,
+      isActive: true,
+      actorUserId: admin.id,
+      requestId: 'req-noop',
+      ipAddress: '1.1.1.1',
+      userAgent: 'ua1',
+    });
+
+    expect(returnedUser.isActive).toBe(true);
+
+    const afterUser = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(afterUser!.updatedAt).toEqual(beforeUser!.updatedAt);
+
+    const afterAuditCount = await prisma.auditLog.count();
+    expect(afterAuditCount).toBe(beforeAuditCount);
+
+    const afterSessionCount = await prisma.session.count();
+    expect(afterSessionCount).toBe(beforeSessionCount);
+
+    const afterSession = await prisma.session.findUnique({
+      where: { id: '33333333-3333-3333-3333-333333333333' },
+    });
+    expect(afterSession).toEqual(beforeSession);
+  });
+
+  it('Status + audit transactional rollback', async () => {
+    const admin = await setupAdmin();
+    const user = await usersService.provisionUser({ ...baseInput, actorUserId: admin.id });
+
+    await prisma.session.create({
+      data: {
+        id: '44444444-4444-4444-4444-444444444444',
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 100000),
+        userAgent: 'test',
+        ipAddress: '127.0.0.1',
+        tokenHash: 'dummy',
+        familyId: '55555555-5555-5555-5555-555555555555',
+      },
+    });
+
+    const beforeUser = await prisma.user.findUnique({ where: { id: user.id } });
+    const beforeSession = await prisma.session.findUnique({
+      where: { id: '44444444-4444-4444-4444-444444444444' },
+    });
+    const beforeAuditCount = await prisma.auditLog.count();
+
+    const invalidActorId = '00000000-0000-0000-0000-000000000000';
+    await expect(
+      usersService.updateUserStatus({
+        targetUserId: user.id,
+        isActive: false,
+        actorUserId: invalidActorId,
+        requestId: 'req-fail',
+        ipAddress: '1.1.1.1',
+        userAgent: 'ua',
+      }),
+    ).rejects.toThrow();
+
+    const afterUser = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(afterUser!.isActive).toBe(true);
+    expect(afterUser).toEqual(beforeUser);
+
+    const afterSession = await prisma.session.findUnique({
+      where: { id: '44444444-4444-4444-4444-444444444444' },
+    });
+    expect(afterSession!.revokedAt).toBeNull();
+    expect(afterSession).toEqual(beforeSession);
+
+    const afterAuditCount = await prisma.auditLog.count();
+    expect(afterAuditCount).toBe(beforeAuditCount);
+  });
 });
