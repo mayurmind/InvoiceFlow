@@ -8,3 +8,12 @@ export const loginSchema = {
     })
     .strict(),
 };
+
+export const changePasswordSchema = {
+  body: z
+    .object({
+      currentPassword: z.string().min(15).max(128),
+      newPassword: z.string().min(15).max(128),
+    })
+    .strict(),
+};

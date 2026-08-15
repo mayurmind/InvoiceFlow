@@ -86,3 +86,61 @@ export const updateUserRoleHandler = async (
     next(error);
   }
 };
+
+export const resetUserPasswordHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    if (!req.auth?.user) {
+      throw new UnauthorizedError('Unauthorized');
+    }
+
+    const ipAddress = req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    const requestId = req.id as string;
+
+    const user = await usersService.resetPassword({
+      targetUserId: req.params.userId,
+      temporaryPassword: req.body.temporaryPassword,
+      actorUserId: req.auth.user.id,
+      ipAddress,
+      userAgent,
+      requestId,
+    });
+
+    res.status(200).json({ user });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateUserStatusHandler = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  try {
+    if (!req.auth?.user) {
+      throw new UnauthorizedError('Unauthorized');
+    }
+
+    const ipAddress = req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    const requestId = req.id as string;
+
+    const user = await usersService.updateUserStatus({
+      targetUserId: req.params.userId,
+      isActive: req.body.isActive,
+      actorUserId: req.auth.user.id,
+      ipAddress,
+      userAgent,
+      requestId,
+    });
+
+    res.status(200).json({ user });
+  } catch (error) {
+    next(error);
+  }
+};

@@ -6,7 +6,7 @@ import { verifyCsrfToken } from '../../src/features/auth/csrf';
 import { UnauthorizedError } from '../../src/errors/application.error';
 import type { AuthContext } from '../../src/features/auth/auth.types';
 
-const createAuthContext = (role: UserRole): AuthContext => ({
+const createAuthContext = (role: UserRole, mustChangePassword = false): AuthContext => ({
   sessionId: 'mock-session-id',
   user: {
     id: 'mock-user-id',
@@ -14,7 +14,7 @@ const createAuthContext = (role: UserRole): AuthContext => ({
     firstName: 'Mock',
     lastName: 'User',
     role,
-    mustChangePassword: true,
+    mustChangePassword,
     lastLoginAt: null,
   },
 });
@@ -27,16 +27,27 @@ vi.mock('../../src/features/auth/csrf', async (importOriginal) => {
   };
 });
 
-vi.mock('../../src/features/auth/auth.middleware', () => ({
-  authenticateRequest: vi.fn((req, _res, next) => {
-    if (req.headers['x-mock-auth'] === 'none') {
-      return next(new UnauthorizedError());
-    }
-    const role = (req.headers['x-mock-role'] as UserRole) || UserRole.STAFF;
-    req.auth = createAuthContext(role);
-    next();
-  }),
-}));
+vi.mock('../../src/features/auth/auth.middleware', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/features/auth/auth.middleware')>();
+
+  return {
+    ...actual,
+
+    authenticateRequest: vi.fn((req, _res, next) => {
+      if (req.headers['x-mock-auth'] === 'none') {
+        return next(new UnauthorizedError());
+      }
+
+      const role = (req.headers['x-mock-role'] as UserRole) || UserRole.STAFF;
+
+      const mustChangePassword = req.headers['x-mock-must-change-password'] === 'true';
+
+      req.auth = createAuthContext(role, mustChangePassword);
+
+      next();
+    }),
+  };
+});
 
 // We mock the user service to bypass database logic,
 // because we are only testing RBAC middleware security boundaries.
@@ -61,6 +72,16 @@ describe('RBAC Security Tests', () => {
     expect(res.status).toBe(403);
     res = await request(app).get('/api/v1/users').set('x-mock-role', UserRole.VIEWER);
     expect(res.status).toBe(403);
+  });
+
+  it('password-change-required user cannot reach protected users APIs', async () => {
+    const res = await request(app)
+      .get('/api/v1/users')
+      .set('x-mock-role', UserRole.SUPER_ADMIN)
+      .set('x-mock-must-change-password', 'true');
+
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
   });
 
   it('STAFF/VIEWER create denial', async () => {

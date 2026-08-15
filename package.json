@@ -20,5 +20,8 @@
     "eslint": "^8.57.0",
     "prettier": "^3.2.5",
     "typescript-eslint": "^7.5.0"
+  },
+  "resolutions": {
+    "nanoid": "3.3.18"
   }
 }

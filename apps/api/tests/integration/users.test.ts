@@ -13,7 +13,7 @@ import {
 import { ManagedUser } from '../../src/features/users/users.types';
 import type { AuthContext } from '../../src/features/auth/auth.types';
 
-const createAuthContext = (role: UserRole): AuthContext => ({
+const createAuthContext = (role: UserRole, mustChangePassword = false): AuthContext => ({
   sessionId: 'mock-session-id',
   user: {
     id: 'mock-user-id',
@@ -21,7 +21,7 @@ const createAuthContext = (role: UserRole): AuthContext => ({
     firstName: 'Mock',
     lastName: 'User',
     role,
-    mustChangePassword: true,
+    mustChangePassword,
     lastLoginAt: null,
   },
 });
@@ -36,16 +36,27 @@ vi.mock('../../src/features/auth/csrf', async (importOriginal) => {
 
 vi.mock('../../src/features/users/users.service');
 
-vi.mock('../../src/features/auth/auth.middleware', () => ({
-  authenticateRequest: vi.fn((req, _res, next) => {
-    if (req.headers['x-mock-auth'] === 'none') {
-      return next(new UnauthorizedError());
-    }
-    const role = (req.headers['x-mock-role'] as UserRole) || UserRole.SUPER_ADMIN;
-    req.auth = createAuthContext(role);
-    next();
-  }),
-}));
+vi.mock('../../src/features/auth/auth.middleware', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/features/auth/auth.middleware')>();
+
+  return {
+    ...actual,
+
+    authenticateRequest: vi.fn((req, _res, next) => {
+      if (req.headers['x-mock-auth'] === 'none') {
+        return next(new UnauthorizedError());
+      }
+
+      const role = (req.headers['x-mock-role'] as UserRole) || UserRole.SUPER_ADMIN;
+
+      const mustChangePassword = req.headers['x-mock-must-change-password'] === 'true';
+
+      req.auth = createAuthContext(role, mustChangePassword);
+
+      next();
+    }),
+  };
+});
 
 describe('Users HTTP Integration Tests', () => {
   beforeEach(() => {
@@ -173,6 +184,17 @@ describe('Users HTTP Integration Tests', () => {
       const res = await request(app).get('/api/v1/users').set('x-mock-role', UserRole.SUPER_ADMIN);
       expect(res.status).toBe(200);
       expect(res.type).toBe('application/json');
+    });
+
+    it('must-change-password SUPER_ADMIN is blocked before business handler', async () => {
+      const res = await request(app)
+        .get('/api/v1/users')
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-mock-must-change-password', 'true');
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+      expect(usersService.listUsers).not.toHaveBeenCalled();
     });
   });
 
@@ -566,6 +588,85 @@ describe('Users HTTP Integration Tests', () => {
         .send({ role: UserRole.VIEWER });
       expect(res.status).toBe(200);
       expect(res.type).toBe('application/json');
+    });
+  });
+
+  describe('POST /api/v1/users/:userId/reset-password', () => {
+    const validBody = { temporaryPassword: 'TempPassword123!' };
+
+    it('returns 200 on success', async () => {
+      vi.mocked(usersService.resetPassword).mockResolvedValue(mockUser);
+
+      const res = await request(app)
+        .post('/api/v1/users/550e8400-e29b-41d4-a716-446655440000/reset-password')
+        .set('Origin', 'http://localhost:3000')
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-csrf-token', 'mock-csrf')
+        .send(validBody);
+
+      expect(res.status).toBe(200);
+      expect(res.body.user).toBeDefined();
+    });
+
+    it('returns 400 for short password', async () => {
+      const res = await request(app)
+        .post('/api/v1/users/550e8400-e29b-41d4-a716-446655440000/reset-password')
+        .set('Origin', 'http://localhost:3000')
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-csrf-token', 'mock-csrf')
+        .send({ temporaryPassword: 'short' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 403 if missing CSRF', async () => {
+      const res = await request(app)
+        .post('/api/v1/users/550e8400-e29b-41d4-a716-446655440000/reset-password')
+        .set('Origin', 'http://localhost:3000')
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .send(validBody);
+
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('PATCH /api/v1/users/:userId/status', () => {
+    const validBody = { isActive: false };
+
+    it('returns 200 on success', async () => {
+      vi.mocked(usersService.updateUserStatus).mockResolvedValue({ ...mockUser, isActive: false });
+
+      const res = await request(app)
+        .patch('/api/v1/users/550e8400-e29b-41d4-a716-446655440000/status')
+        .set('Origin', 'http://localhost:3000')
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-csrf-token', 'mock-csrf')
+        .send(validBody);
+
+      expect(res.status).toBe(200);
+      expect(res.body.user.isActive).toBe(false);
+    });
+
+    it('returns 400 for non-boolean isActive', async () => {
+      const res = await request(app)
+        .patch('/api/v1/users/550e8400-e29b-41d4-a716-446655440000/status')
+        .set('Origin', 'http://localhost:3000')
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-csrf-token', 'mock-csrf')
+        .send({ isActive: 'false' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 403 if user is not SUPER_ADMIN', async () => {
+      const res = await request(app)
+        .patch('/api/v1/users/550e8400-e29b-41d4-a716-446655440000/status')
+        .set('Origin', 'http://localhost:3000')
+        .set('x-mock-role', UserRole.STAFF)
+        .set('x-csrf-token', 'mock-csrf')
+        .send(validBody);
+
+      expect(res.status).toBe(403);
     });
   });
 });

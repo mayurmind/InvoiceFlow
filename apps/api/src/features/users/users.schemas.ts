@@ -63,3 +63,32 @@ export const updateUserRoleSchema = {
     })
     .strict(),
 };
+
+export const resetPasswordSchema = {
+  params: z
+    .object({
+      userId: z.string().uuid('Invalid user ID'),
+    })
+    .strict(),
+  body: z
+    .object({
+      temporaryPassword: z.string().min(15).max(128),
+    })
+    .strict(),
+};
+
+export const updateUserStatusSchema = {
+  params: z
+    .object({
+      userId: z.string().uuid('Invalid user ID'),
+    })
+    .strict(),
+  body: z
+    .object({
+      isActive: z.boolean({
+        required_error: 'isActive is required',
+        invalid_type_error: 'isActive must be a boolean',
+      }),
+    })
+    .strict(),
+};

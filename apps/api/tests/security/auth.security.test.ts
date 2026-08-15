@@ -379,4 +379,183 @@ describe('Auth Security', () => {
       expect(loggedOutput).toContain('[REDACTED]');
     });
   });
+
+  describe('Change Password Endpoint Security', () => {
+    const origin = 'http://localhost:3000';
+    const validPayload = {
+      currentPassword: 'OldPassword123!',
+      newPassword: 'NewPassword123!',
+    };
+
+    beforeEach(() => {
+      vi.mocked(tokensUtils.verifyAccessToken).mockReturnValue({
+        sub: 'u1',
+        sid: 's1',
+        role: 'VIEWER',
+        type: 'access',
+      });
+
+      vi.mocked(authRepo.getSessionById).mockResolvedValue({
+        id: 's1',
+        userId: 'u1',
+        revokedAt: null,
+        rotatedAt: null,
+        replacedBySessionId: null,
+        expiresAt: new Date(Date.now() + 100_000),
+      } as Session);
+
+      vi.mocked(authRepo.getUserById).mockResolvedValue({
+        id: 'u1',
+        email: 'password-user@example.com',
+        passwordHash: 'current-hash',
+        firstName: 'Password',
+        lastName: 'User',
+        role: 'VIEWER',
+        isActive: true,
+        mustChangePassword: false,
+        lastLoginAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as User);
+
+      vi.mocked(authRepo.mapUserToSanitized).mockReturnValue({
+        id: 'u1',
+        email: 'password-user@example.com',
+        firstName: 'Password',
+        lastName: 'User',
+        role: 'VIEWER',
+        mustChangePassword: false,
+        lastLoginAt: null,
+      });
+    });
+
+    it('requires valid Origin', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/change-password')
+        .set('Origin', 'http://evil.com')
+        .send(validPayload);
+      expect(res.status).toBe(401);
+    });
+
+    it('requires CSRF token', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/change-password')
+        .set('Origin', origin)
+        .set('Cookie', ['__Host-invoiceflow-access=valid-token'])
+        .send(validPayload);
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects duplicate raw CSRF headers', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/change-password')
+        .set('Origin', origin)
+        .set('Cookie', ['__Host-invoiceflow-access=valid-token'])
+        .set('x-csrf-token', ['token1', 'token2'])
+        .send(validPayload);
+      expect(res.status).toBe(403);
+    });
+
+    it('requires authenticated access', async () => {
+      const res = await request(app)
+        .post('/api/v1/auth/change-password')
+        .set('Origin', origin)
+        .set('x-csrf-token', 'mock-csrf')
+        .send(validPayload);
+      // Fails because no cookie is provided
+      expect(res.status).toBe(401);
+    });
+
+    it('bypasses requirePasswordChangeCompleted despite mustChangePassword: true', async () => {
+      vi.mocked(authRepo.getUserById).mockResolvedValue({
+        id: 'u1',
+        email: 'password-user@example.com',
+        passwordHash: 'current-hash',
+        firstName: 'Password',
+        lastName: 'User',
+        role: 'VIEWER',
+        isActive: true,
+        mustChangePassword: true,
+        lastLoginAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as User);
+
+      vi.mocked(authRepo.mapUserToSanitized).mockReturnValue({
+        id: 'u1',
+        email: 'password-user@example.com',
+        firstName: 'Password',
+        lastName: 'User',
+        role: 'VIEWER',
+        mustChangePassword: true,
+        lastLoginAt: null,
+      });
+
+      const res = await request(app)
+        .post('/api/v1/auth/change-password')
+        .set('Origin', origin)
+        .set('Cookie', ['__Host-invoiceflow-access=valid-token'])
+        .send(validPayload);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).not.toBe('PASSWORD_CHANGE_REQUIRED');
+      // Reaches the CSRF middleware
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    });
+
+    it('does not leak passwords in logs or responses', async () => {
+      let loggedOutput = '';
+
+      const logStream = new Writable({
+        write(chunk, encoding, callback) {
+          void encoding;
+          loggedOutput += chunk.toString();
+          callback();
+        },
+      });
+      const pinoHttpFactory = (await import('pino-http')).default;
+      const pinoHttp = pinoHttpFactory({
+        logger: pino(loggerOptions, logStream),
+      });
+
+      const express = (await import('express')).default;
+      const testApp = express();
+
+      testApp.use(pinoHttp);
+      testApp.use(app);
+
+      vi.mocked(authRepo.getUserById).mockResolvedValue({
+        id: 'u1',
+        email: 'password-user@example.com',
+        passwordHash: 'current-hash',
+        firstName: 'Password',
+        lastName: 'User',
+        role: 'VIEWER',
+        isActive: true,
+        mustChangePassword: true,
+        lastLoginAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as User);
+
+      // Force 400 error in validation
+      const res = await request(testApp)
+        .post('/api/v1/auth/change-password')
+        .set('Origin', origin)
+        .set('Cookie', ['__Host-invoiceflow-access=valid-token'])
+        .set('x-csrf-token', 'mock-csrf')
+        .send({
+          currentPassword: 'LeakThisPassword123!',
+          newPassword: 'LeakThisNewPassword123!',
+        });
+
+      // Verify no password info leaked to response
+      expect(JSON.stringify(res.body)).not.toContain('LeakThisPassword123!');
+      expect(JSON.stringify(res.body)).not.toContain('LeakThisNewPassword123!');
+
+      // Verify no password info leaked to logs
+      expect(loggedOutput).not.toContain('LeakThisPassword123!');
+      expect(loggedOutput).not.toContain('LeakThisNewPassword123!');
+    });
+  });
 });

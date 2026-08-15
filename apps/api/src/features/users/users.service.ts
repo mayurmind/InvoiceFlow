@@ -186,3 +186,94 @@ export const updateUserRole = async (params: {
     return updatedUser;
   });
 };
+
+export const resetPassword = async (params: {
+  targetUserId: string;
+  temporaryPassword: string;
+  actorUserId: string;
+  requestId: string;
+  ipAddress: string;
+  userAgent: string;
+}): Promise<ManagedUser> => {
+  const hashedPassword = await hashPassword(params.temporaryPassword);
+
+  return await runInTransaction(async (tx) => {
+    const target = await usersRepo.getUserForUpdate(params.targetUserId, tx);
+    if (!target) {
+      throw new NotFoundError('User not found');
+    }
+
+    if (target.role === UserRole.SUPER_ADMIN) {
+      throw new ForbiddenError('Forbidden');
+    }
+
+    await usersRepo.updateUserPasswordState(params.targetUserId, hashedPassword, true, tx);
+
+    const { invalidateAllUserSessions } = await import('../auth/auth.repository');
+    await invalidateAllUserSessions(tx, params.targetUserId, 'ADMIN_PASSWORD_RESET', new Date());
+
+    await usersRepo.createUserAuditLog(
+      {
+        action: 'USER_PASSWORD_RESET',
+        actorUserId: params.actorUserId,
+        entityType: 'USER',
+        entityId: target.id,
+        metadata: { mustChangePassword: true },
+        ipAddress: params.ipAddress.substring(0, 64),
+        userAgent: params.userAgent.substring(0, 500),
+        requestId: params.requestId,
+      },
+      tx,
+    );
+
+    // Return the updated ManagedUser representation (without passwordHash)
+    return (await usersRepo.getUserById(params.targetUserId, tx)) as ManagedUser;
+  });
+};
+
+export const updateUserStatus = async (params: {
+  targetUserId: string;
+  isActive: boolean;
+  actorUserId: string;
+  requestId: string;
+  ipAddress: string;
+  userAgent: string;
+}): Promise<ManagedUser> => {
+  return await runInTransaction(async (tx) => {
+    const target = await usersRepo.getUserForUpdate(params.targetUserId, tx);
+    if (!target) {
+      throw new NotFoundError('User not found');
+    }
+
+    if (target.role === UserRole.SUPER_ADMIN) {
+      throw new ForbiddenError('Forbidden');
+    }
+
+    if (target.isActive === params.isActive) {
+      return target; // Same-state no-op
+    }
+
+    const updatedUser = await usersRepo.updateUserStatus(params.targetUserId, params.isActive, tx);
+
+    if (params.isActive === false) {
+      const { invalidateAllUserSessions } = await import('../auth/auth.repository');
+      await invalidateAllUserSessions(tx, params.targetUserId, 'ACCOUNT_DEACTIVATED', new Date());
+    }
+
+    await usersRepo.createUserAuditLog(
+      {
+        action: params.isActive ? 'USER_REACTIVATED' : 'USER_DEACTIVATED',
+        actorUserId: params.actorUserId,
+        entityType: 'USER',
+        entityId: target.id,
+        metadata: { previousIsActive: target.isActive, newIsActive: params.isActive },
+        ipAddress: params.ipAddress.substring(0, 64),
+        userAgent: params.userAgent.substring(0, 500),
+        requestId: params.requestId,
+      },
+      tx,
+    );
+
+    return updatedUser;
+  });
+};

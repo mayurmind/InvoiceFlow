@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import cookieParser from 'cookie-parser';
 import { validateRequest } from '../../middleware/validation.middleware';
-import { loginSchema } from './auth.schemas';
+import { loginSchema, changePasswordSchema } from './auth.schemas';
 import { loginLimiter } from './login-rate-limit.middleware';
 import { originGuard } from './origin.middleware';
 import { authenticateRequest } from './auth.middleware';
@@ -13,6 +13,7 @@ import {
   refreshHandler,
   logoutHandler,
   logoutAllHandler,
+  changePasswordHandler,
 } from './auth.controller';
 
 export const authRouter = Router();
@@ -35,4 +36,13 @@ authRouter.post(
   authenticateRequest,
   requireCsrfToken,
   logoutAllHandler,
+);
+
+authRouter.post(
+  '/change-password',
+  originGuard,
+  authenticateRequest,
+  requireCsrfToken,
+  validateRequest(changePasswordSchema),
+  changePasswordHandler,
 );

@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { UnauthorizedError } from '../../errors/application.error';
+import { UnauthorizedError, PasswordChangeRequiredError } from '../../errors/application.error';
 import { getCookieName } from './cookies';
 import { verifyAccessToken } from './tokens';
 import { getSessionById, getUserById, mapUserToSanitized } from './auth.repository';
@@ -61,4 +61,20 @@ export const authenticateRequest = async (req: Request, _res: Response, next: Ne
       next(error);
     }
   }
+};
+
+export const requirePasswordChangeCompleted = (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+) => {
+  if (!req.auth) {
+    return next(new UnauthorizedError());
+  }
+
+  if (req.auth.user.mustChangePassword === true) {
+    return next(new PasswordChangeRequiredError());
+  }
+
+  next();
 };

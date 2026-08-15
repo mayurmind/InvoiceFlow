@@ -5,6 +5,7 @@ import {
   logoutSession,
   logoutAllSessions,
   generateCsrfForSession,
+  changePassword,
 } from './auth.service';
 import { createAuthCookie, getCookieName, clearAuthCookie } from './cookies';
 
@@ -123,6 +124,32 @@ export const logoutAllHandler = async (req: Request, res: Response, next: NextFu
         requestId: req.id,
       });
     }
+
+    const accessCookie = clearAuthCookie('access');
+    const refreshCookie = clearAuthCookie('refresh');
+
+    res.cookie(accessCookie.name, accessCookie.value, accessCookie.options);
+    res.cookie(refreshCookie.name, refreshCookie.value, refreshCookie.options);
+
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const changePasswordHandler = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!req.auth || !req.auth.user) {
+      throw new UnauthorizedError();
+    }
+
+    const { currentPassword, newPassword } = req.body;
+
+    await changePassword(req.auth.user.id, currentPassword, newPassword, {
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+      requestId: req.id,
+    });
 
     const accessCookie = clearAuthCookie('access');
     const refreshCookie = clearAuthCookie('refresh');

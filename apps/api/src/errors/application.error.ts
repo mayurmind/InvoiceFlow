@@ -86,3 +86,12 @@ export class ConflictError extends AppError {
     super(message, 409, 'CONFLICT');
   }
 }
+
+/**
+ * Used when a user must complete a required password change.
+ */
+export class PasswordChangeRequiredError extends AppError {
+  constructor(message = 'Password change required.') {
+    super(message, 403, 'PASSWORD_CHANGE_REQUIRED');
+  }
+}

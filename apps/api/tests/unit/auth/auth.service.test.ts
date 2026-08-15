@@ -421,4 +421,47 @@ describe('auth.service', () => {
       );
     });
   });
+
+  describe('changePassword', () => {
+    it('successfully changes password and clears mustChangePassword', async () => {
+      const mockUser = {
+        id: 'u1',
+        passwordHash: 'old-hash',
+        isActive: true,
+        mustChangePassword: true,
+      };
+
+      vi.mocked(authRepo.getUserById).mockResolvedValue(mockUser as User);
+      const userRepoMock = {
+        getUserPasswordStateById: vi.fn().mockResolvedValue(mockUser),
+        getPasswordStateForUpdate: vi.fn().mockResolvedValue(mockUser),
+        updateUserPasswordState: vi.fn().mockResolvedValue(undefined),
+      };
+      vi.doMock('../../../src/features/users/users.repository', () => userRepoMock);
+
+      vi.mocked(passwordUtils.verifyPassword).mockResolvedValueOnce(true); // current is valid
+      vi.mocked(passwordUtils.verifyPassword).mockResolvedValueOnce(false); // new is different
+      vi.mocked(passwordUtils.hashPassword).mockResolvedValue('new-hash');
+
+      const { changePassword } = await import('../../../src/features/auth/auth.service');
+      await changePassword('u1', 'OldPassword123!', 'NewPassword123!', {});
+
+      expect(userRepoMock.updateUserPasswordState).toHaveBeenCalledWith(
+        'u1',
+        'new-hash',
+        false,
+        expect.anything(),
+      );
+      expect(authRepo.invalidateAllUserSessions).toHaveBeenCalledWith(
+        expect.anything(),
+        'u1',
+        'PASSWORD_CHANGED',
+        expect.any(Date),
+      );
+      expect(authRepo.createAuditLog).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ action: 'USER_PASSWORD_CHANGED', actorUserId: 'u1' }),
+      );
+    });
+  });
 });

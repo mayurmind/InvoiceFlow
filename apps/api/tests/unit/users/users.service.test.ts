@@ -337,4 +337,103 @@ describe('Users Service', () => {
       await expect(usersService.updateUserRole(updateInput)).rejects.toThrow('Audit fail');
     });
   });
+
+  describe('resetPassword', () => {
+    const resetInput = {
+      targetUserId: 'target-id',
+      temporaryPassword: 'TempPassword123',
+      actorUserId: 'admin-id',
+      requestId: 'req-id',
+      ipAddress: '127.0.0.1',
+      userAgent: 'test-agent',
+    };
+
+    it('resets password, sets mustChangePassword, revokes sessions, audits', async () => {
+      vi.mocked(passwordModule.hashPassword).mockResolvedValue('hashed-pass');
+      vi.mocked(usersRepo.getUserForUpdate).mockResolvedValue(mockUser);
+      vi.mocked(usersRepo.getUserById).mockResolvedValue(mockUser);
+      const authRepoMock = { invalidateAllUserSessions: vi.fn() };
+      vi.doMock('../../../src/features/auth/auth.repository', () => authRepoMock);
+
+      const mockTx = {} as unknown as ITXClient;
+      vi.mocked(transactionModule.runInTransaction).mockImplementation(
+        async (cb) => await cb(mockTx),
+      );
+
+      const res = await usersService.resetPassword(resetInput);
+
+      expect(res).toEqual(mockUser);
+      expect(passwordModule.hashPassword).toHaveBeenCalledWith('TempPassword123');
+      expect(usersRepo.updateUserPasswordState).toHaveBeenCalledWith(
+        'target-id',
+        'hashed-pass',
+        true,
+        mockTx,
+      );
+      expect(usersRepo.createUserAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'USER_PASSWORD_RESET', actorUserId: 'admin-id' }),
+        mockTx,
+      );
+    });
+
+    it('prevents resetting SUPER_ADMIN', async () => {
+      vi.mocked(usersRepo.getUserForUpdate).mockResolvedValue({
+        ...mockUser,
+        role: UserRole.SUPER_ADMIN,
+      });
+      await expect(usersService.resetPassword(resetInput)).rejects.toThrow(ForbiddenError);
+    });
+  });
+
+  describe('updateUserStatus', () => {
+    const statusInput = {
+      targetUserId: 'target-id',
+      isActive: false,
+      actorUserId: 'admin-id',
+      requestId: 'req-id',
+      ipAddress: '127.0.0.1',
+      userAgent: 'test-agent',
+    };
+
+    it('updates status and audits', async () => {
+      vi.mocked(usersRepo.getUserForUpdate).mockResolvedValue(mockUser); // isActive: true
+      vi.mocked(usersRepo.updateUserStatus).mockResolvedValue({ ...mockUser, isActive: false });
+
+      const mockTx = {} as unknown as ITXClient;
+      vi.mocked(transactionModule.runInTransaction).mockImplementation(
+        async (cb) => await cb(mockTx),
+      );
+
+      const res = await usersService.updateUserStatus(statusInput);
+
+      expect(res.isActive).toBe(false);
+      expect(usersRepo.updateUserStatus).toHaveBeenCalledWith('target-id', false, mockTx);
+      expect(usersRepo.createUserAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'USER_DEACTIVATED' }),
+        mockTx,
+      );
+    });
+
+    it('prevents updating SUPER_ADMIN', async () => {
+      vi.mocked(usersRepo.getUserForUpdate).mockResolvedValue({
+        ...mockUser,
+        role: UserRole.SUPER_ADMIN,
+      });
+      await expect(usersService.updateUserStatus(statusInput)).rejects.toThrow(ForbiddenError);
+    });
+
+    it('same state is no-op', async () => {
+      vi.mocked(usersRepo.getUserForUpdate).mockResolvedValue({ ...mockUser, isActive: false });
+
+      const mockTx = {} as unknown as ITXClient;
+      vi.mocked(transactionModule.runInTransaction).mockImplementation(
+        async (cb) => await cb(mockTx),
+      );
+
+      const res = await usersService.updateUserStatus(statusInput);
+
+      expect(res.isActive).toBe(false);
+      expect(usersRepo.updateUserStatus).not.toHaveBeenCalled();
+    });
+  });
 });

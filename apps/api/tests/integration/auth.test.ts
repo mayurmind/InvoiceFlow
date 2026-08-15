@@ -442,6 +442,49 @@ describe('Auth API Integration', () => {
     });
   });
 
+  describe('POST /api/v1/auth/change-password', () => {
+    it('returns 204 on success, clears cookies', async () => {
+      vi.mocked(authService.changePassword).mockResolvedValue();
+
+      const tokenUtils = await import('../../src/features/auth/tokens');
+      const csrfUtils = await import('../../src/features/auth/csrf');
+      vi.spyOn(tokenUtils, 'verifyAccessToken').mockReturnValue({
+        sub: 'u1',
+        sid: 's1',
+        role: 'VIEWER',
+        type: 'access',
+      });
+      vi.spyOn(authRepo, 'getSessionById').mockResolvedValue({
+        id: 's1',
+        userId: 'u1',
+        revokedAt: null,
+        rotatedAt: null,
+        replacedBySessionId: null,
+        expiresAt: new Date(Date.now() + 10000),
+      } as Session);
+      vi.spyOn(authRepo, 'getUserById').mockResolvedValue({
+        id: 'u1',
+        isActive: true,
+        role: 'VIEWER',
+        mustChangePassword: true, // Should succeed even if true
+      } as User);
+      vi.spyOn(csrfUtils, 'verifyCsrfToken').mockReturnValue(true);
+
+      const res = await request(app)
+        .post('/api/v1/auth/change-password')
+        .set('Origin', 'http://localhost:3000')
+        .set('Cookie', ['invoiceflow-access=valid'])
+        .set('x-csrf-token', 'valid-csrf')
+        .send({ currentPassword: 'OldPassword123!', newPassword: 'NewPassword123!' });
+
+      expect(res.status).toBe(204);
+      expect(res.text).toBe('');
+
+      const cookies = res.headers['set-cookie'];
+      expect(cookies.some((c: string) => c.includes('Max-Age=0'))).toBe(true);
+    });
+  });
+
   describe('CORS', () => {
     it('OPTIONS preflight proves X-CSRF-Token is allowed', async () => {
       const res = await request(app)

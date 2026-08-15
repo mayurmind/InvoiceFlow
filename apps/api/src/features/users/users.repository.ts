@@ -148,3 +148,66 @@ export const createUserAuditLog = async (
     },
   });
 };
+
+export const getUserPasswordStateById = async (
+  userId: string,
+  client: ITXClient = prisma,
+): Promise<{
+  id: string;
+  passwordHash: string;
+  isActive: boolean;
+  mustChangePassword: boolean;
+} | null> => {
+  return client.user.findUnique({
+    where: { id: userId },
+    select: { id: true, passwordHash: true, isActive: true, mustChangePassword: true },
+  });
+};
+
+export const getPasswordStateForUpdate = async (
+  userId: string,
+  client: ITXClient = prisma,
+): Promise<{
+  id: string;
+  passwordHash: string;
+  isActive: boolean;
+  mustChangePassword: boolean;
+} | null> => {
+  const rows = await client.$queryRaw<
+    { id: string; passwordHash: string; isActive: boolean; mustChangePassword: boolean }[]
+  >`
+    SELECT
+      "id",
+      "passwordHash",
+      "isActive",
+      "mustChangePassword"
+    FROM "users"
+    WHERE "id" = ${userId}::uuid
+    FOR UPDATE
+  `;
+  return rows[0] || null;
+};
+
+export const updateUserPasswordState = async (
+  userId: string,
+  passwordHash: string,
+  mustChangePassword: boolean,
+  client: ITXClient = prisma,
+): Promise<void> => {
+  await client.user.update({
+    where: { id: userId },
+    data: { passwordHash, mustChangePassword },
+  });
+};
+
+export const updateUserStatus = async (
+  userId: string,
+  isActive: boolean,
+  client: ITXClient = prisma,
+): Promise<ManagedUser> => {
+  return client.user.update({
+    where: { id: userId },
+    data: { isActive },
+    select: managedUserSelect,
+  });
+};

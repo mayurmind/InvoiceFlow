@@ -167,3 +167,46 @@ describe('authenticateRequest', () => {
     expect(mockNext).toHaveBeenCalledWith(dbError);
   });
 });
+
+import { requirePasswordChangeCompleted } from '../../../src/features/auth/auth.middleware';
+import { PasswordChangeRequiredError } from '../../../src/errors/application.error';
+
+describe('requirePasswordChangeCompleted', () => {
+  const mockNext = vi.fn();
+  const mockRes = {} as Response;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('rejects if req.auth is missing', () => {
+    const req = {} as Request;
+    requirePasswordChangeCompleted(req, mockRes, mockNext);
+    expect(mockNext.mock.calls[0][0].message).toBe('Unauthorized');
+  });
+
+  it('rejects with PasswordChangeRequiredError if mustChangePassword is true', () => {
+    const req = {
+      auth: {
+        user: { mustChangePassword: true },
+      },
+    } as unknown as Request;
+    requirePasswordChangeCompleted(req, mockRes, mockNext);
+    const error = mockNext.mock.calls[0][0];
+
+    expect(error).toBeInstanceOf(PasswordChangeRequiredError);
+    expect(error.statusCode).toBe(403);
+    expect(error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+    expect(error.message).toBe('Password change required.');
+  });
+
+  it('calls next if mustChangePassword is false', () => {
+    const req = {
+      auth: {
+        user: { mustChangePassword: false },
+      },
+    } as unknown as Request;
+    requirePasswordChangeCompleted(req, mockRes, mockNext);
+    expect(mockNext).toHaveBeenCalledWith();
+  });
+});

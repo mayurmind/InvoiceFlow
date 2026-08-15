@@ -5,9 +5,10 @@ import {
   AuthenticationFailedError,
   UnauthorizedError,
   ForbiddenError,
+  ConflictError,
 } from '../../errors/application.error';
 import { parseDurationToMs } from '../../utilities/duration';
-import { verifyPassword } from './password';
+import { verifyPassword, hashPassword } from './password';
 import { generateAccessToken, generateRefreshCredential } from './tokens';
 import { logger } from '../../utilities/logger';
 import {
@@ -354,4 +355,73 @@ export const generateCsrfForSession = async (rawRefreshToken: string) => {
   }
 
   return generateCsrfToken(session.id);
+};
+
+export const changePassword = async (
+  userId: string,
+  currentPasswordRaw: string,
+  newPasswordRaw: string,
+  clientInfo: { ip?: string; userAgent?: string; requestId?: string },
+) => {
+  const boundedIp = clientInfo.ip?.slice(0, 64);
+  const boundedUa = clientInfo.userAgent?.slice(0, 500);
+
+  const { getUserById } = await import('./auth.repository');
+  const user = await getUserById(userId);
+  if (!user || user.isActive !== true) {
+    throw new UnauthorizedError('Current password is incorrect.');
+  }
+
+  // To get the actual passwordHash, we need the internal password state
+  const { getPasswordStateForUpdate, updateUserPasswordState } =
+    await import('../users/users.repository');
+  // We don't have a non-locking password reader yet in users, but we can just use getUserForUpdate without a transaction? No, wait.
+  // We can just use getPasswordStateForUpdate outside tx, or create a simple getter.
+  // Actually, I can just use prisma directly here or create a getter.
+  // I'll create a getter in users.repository.ts called `getUserPasswordStateById`.
+  const { getUserPasswordStateById } = await import('../users/users.repository');
+  const preTxUser = await getUserPasswordStateById(userId);
+  if (!preTxUser) {
+    throw new UnauthorizedError('Current password is incorrect.');
+  }
+
+  const isCurrentPasswordValid = await verifyPassword(preTxUser.passwordHash, currentPasswordRaw);
+  if (!isCurrentPasswordValid) {
+    throw new UnauthorizedError('Current password is incorrect.');
+  }
+
+  // Prevent same password
+  const isNewSameAsCurrent = await verifyPassword(preTxUser.passwordHash, newPasswordRaw);
+  if (isNewSameAsCurrent) {
+    throw new ConflictError('New password must be different from current password.');
+  }
+
+  const newPasswordHash = await hashPassword(newPasswordRaw);
+
+  await runInTransaction(async (tx) => {
+    const lockedUser = await getPasswordStateForUpdate(userId, tx);
+    if (!lockedUser || lockedUser.isActive !== true) {
+      throw new ConflictError('User state changed.');
+    }
+
+    if (lockedUser.passwordHash !== preTxUser.passwordHash) {
+      throw new ConflictError('Password state changed concurrently.');
+    }
+
+    await updateUserPasswordState(userId, newPasswordHash, false, tx);
+
+    const changeAt = new Date();
+    const { invalidateAllUserSessions } = await import('./auth.repository');
+    await invalidateAllUserSessions(tx, userId, 'PASSWORD_CHANGED', changeAt);
+
+    await createAuditLog(tx, {
+      action: 'USER_PASSWORD_CHANGED',
+      actorUserId: userId,
+      entityType: 'USER',
+      entityId: userId,
+      ipAddress: boundedIp,
+      userAgent: boundedUa,
+      requestId: clientInfo.requestId,
+    });
+  });
 };
