@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { AnyZodObject, ZodError } from 'zod';
+import { ZodTypeAny, ZodError } from 'zod';
 
 /**
  * Validates req.body, req.query, or req.params against a Zod schema.
@@ -7,7 +7,7 @@ import { AnyZodObject, ZodError } from 'zod';
  * Fails via the global error handler if validation fails.
  */
 export const validateRequest =
-  (schema: { body?: AnyZodObject; query?: AnyZodObject; params?: AnyZodObject }) =>
+  (schema: { body?: ZodTypeAny; query?: ZodTypeAny; params?: ZodTypeAny }) =>
   async (req: Request, _res: Response, next: NextFunction) => {
     try {
       if (schema.params) {
