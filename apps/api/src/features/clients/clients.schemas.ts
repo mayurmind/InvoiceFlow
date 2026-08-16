@@ -158,6 +158,8 @@ export const createClientSchema = clientProfileSchema
 
 export const updateClientSchema = createClientSchema;
 
+export const clientLifecycleBodySchema = z.object({}).strict().optional();
+
 export const clientListQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).default(1),

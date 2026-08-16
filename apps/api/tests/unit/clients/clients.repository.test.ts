@@ -24,6 +24,7 @@ describe('ClientsRepository', () => {
     auditLog: {
       create: vi.fn(),
     },
+    $queryRaw: vi.fn(),
   } as unknown as ITXClient;
 
   beforeEach(() => {
@@ -140,6 +141,40 @@ describe('ClientsRepository', () => {
     });
   });
 
+  describe('lockClientForLifecycle', () => {
+    it('should acquire row lock using parameterized query', async () => {
+      await ClientsRepository.lockClientForLifecycle('test-uuid', mockTx);
+      expect(mockTx.$queryRaw).toHaveBeenCalled();
+
+      const queryCall = vi.mocked(mockTx.$queryRaw).mock.calls[0];
+      // It's a tagged template literal, so we check if the string contains the expected SQL
+      const fullQuery = JSON.stringify(queryCall);
+      expect(fullQuery).toContain('SELECT \\"id\\"');
+      expect(fullQuery).toContain('FOR UPDATE');
+    });
+  });
+
+  describe('archiveClient', () => {
+    it('should update isArchived to true and set archivedAt', async () => {
+      const date = new Date();
+      await ClientsRepository.archiveClient('uuid', date, mockTx);
+      expect(mockTx.client.update).toHaveBeenCalledWith({
+        where: { id: 'uuid' },
+        data: { isArchived: true, archivedAt: date },
+      });
+    });
+  });
+
+  describe('restoreClient', () => {
+    it('should update isArchived to false and clear archivedAt', async () => {
+      await ClientsRepository.restoreClient('uuid', mockTx);
+      expect(mockTx.client.update).toHaveBeenCalledWith({
+        where: { id: 'uuid' },
+        data: { isArchived: false, archivedAt: null },
+      });
+    });
+  });
+
   describe('createClientAuditLog', () => {
     it('should write CLIENT_CREATED audit with Prisma.JsonNull metadata', async () => {
       await ClientsRepository.createClientAuditLog(
@@ -186,6 +221,54 @@ describe('ClientsRepository', () => {
           data: expect.objectContaining({
             action: 'CLIENT_UPDATED',
             metadata: { changedFields: ['name'] },
+          }),
+        }),
+      );
+    });
+
+    it('should write CLIENT_ARCHIVED audit', async () => {
+      await ClientsRepository.createClientAuditLog(
+        {
+          actorUserId: 'actor',
+          action: 'CLIENT_ARCHIVED',
+          entityId: 'uuid',
+          requestId: 'req-1',
+          ipAddress: '127.0.0.1',
+          userAgent: 'test',
+          metadata: {},
+        },
+        mockTx,
+      );
+
+      expect(mockTx.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'CLIENT_ARCHIVED',
+            metadata: {},
+          }),
+        }),
+      );
+    });
+
+    it('should write CLIENT_RESTORED audit', async () => {
+      await ClientsRepository.createClientAuditLog(
+        {
+          actorUserId: 'actor',
+          action: 'CLIENT_RESTORED',
+          entityId: 'uuid',
+          requestId: 'req-1',
+          ipAddress: '127.0.0.1',
+          userAgent: 'test',
+          metadata: {},
+        },
+        mockTx,
+      );
+
+      expect(mockTx.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'CLIENT_RESTORED',
+            metadata: {},
           }),
         }),
       );

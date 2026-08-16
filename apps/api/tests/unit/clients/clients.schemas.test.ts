@@ -3,6 +3,7 @@ import {
   createClientSchema,
   clientListQuerySchema,
   clientIdParamSchema,
+  clientLifecycleBodySchema,
 } from '../../../src/features/clients/clients.schemas';
 
 /** Type-safe property omitter — avoids unused destructuring warnings. */
@@ -242,6 +243,23 @@ describe('Clients Schemas', () => {
 
     it('should reject invalid UUID', () => {
       const result = clientIdParamSchema.safeParse({ clientId: 'invalid' });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('clientLifecycleBodySchema', () => {
+    it('should accept no body', () => {
+      const result = clientLifecycleBodySchema.safeParse(undefined);
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept empty object', () => {
+      const result = clientLifecycleBodySchema.safeParse({});
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject unexpected fields', () => {
+      const result = clientLifecycleBodySchema.safeParse({ unexpected: true });
       expect(result.success).toBe(false);
     });
   });

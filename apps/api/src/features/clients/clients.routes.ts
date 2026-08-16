@@ -11,6 +11,7 @@ import {
   updateClientSchema,
   clientListQuerySchema,
   clientIdParamSchema,
+  clientLifecycleBodySchema,
 } from './clients.schemas';
 
 const router = Router();
@@ -63,6 +64,28 @@ router.put(
   requireCsrfToken,
   validateRequest({ params: clientIdParamSchema, body: updateClientSchema }),
   ClientsController.updateClient,
+);
+
+router.post(
+  '/:clientId/archive',
+  originGuard,
+  authenticateRequest,
+  requirePasswordChangeCompleted,
+  requireRoles(UserRole.SUPER_ADMIN, UserRole.STAFF),
+  requireCsrfToken,
+  validateRequest({ params: clientIdParamSchema, body: clientLifecycleBodySchema }),
+  ClientsController.archiveClient,
+);
+
+router.post(
+  '/:clientId/restore',
+  originGuard,
+  authenticateRequest,
+  requirePasswordChangeCompleted,
+  requireRoles(UserRole.SUPER_ADMIN, UserRole.STAFF),
+  requireCsrfToken,
+  validateRequest({ params: clientIdParamSchema, body: clientLifecycleBodySchema }),
+  ClientsController.restoreClient,
 );
 
 export const clientsRouter = router;

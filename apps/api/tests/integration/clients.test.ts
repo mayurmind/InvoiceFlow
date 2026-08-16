@@ -19,6 +19,8 @@ vi.mock('../../src/features/clients/clients.service', () => {
       getClientById: vi.fn(),
       updateClient: vi.fn(),
       listClients: vi.fn(),
+      archiveClient: vi.fn(),
+      restoreClient: vi.fn(),
     },
   };
 });
@@ -260,6 +262,86 @@ describe('Clients API Integration', () => {
         .get('/api/v1/clients/123e4567-e89b-12d3-a456-426614174000')
         .set('x-mock-role', UserRole.SUPER_ADMIN);
       expect(res.status).toBe(200);
+    });
+  });
+
+  describe('POST /api/v1/clients/:id/archive', () => {
+    it('should reject invalid UUID', async () => {
+      const res = await request(app)
+        .post('/api/v1/clients/invalid-uuid/archive')
+        .set('x-mock-role', UserRole.STAFF)
+        .set('Origin', 'http://localhost:3000')
+        .set('X-CSRF-Token', 'mock-csrf');
+      expect(res.status).toBe(400);
+    });
+
+    it('should deny VIEWER', async () => {
+      const res = await request(app)
+        .post('/api/v1/clients/123e4567-e89b-12d3-a456-426614174000/archive')
+        .set('x-mock-role', UserRole.VIEWER)
+        .set('Origin', 'http://localhost:3000')
+        .set('X-CSRF-Token', 'mock-csrf');
+      expect(res.status).toBe(403);
+    });
+
+    it('should reject unexpected body', async () => {
+      const res = await request(app)
+        .post('/api/v1/clients/123e4567-e89b-12d3-a456-426614174000/archive')
+        .set('x-mock-role', UserRole.STAFF)
+        .set('Origin', 'http://localhost:3000')
+        .set('X-CSRF-Token', 'mock-csrf')
+        .send({ unexpected: true });
+      expect(res.status).toBe(400);
+    });
+
+    it('should return 404 for unknown client', async () => {
+      const { NotFoundError } = await import('../../src/errors/application.error');
+      vi.mocked(ClientsService.archiveClient).mockRejectedValue(new NotFoundError('Not found'));
+      const res = await request(app)
+        .post('/api/v1/clients/123e4567-e89b-12d3-a456-426614174000/archive')
+        .set('x-mock-role', UserRole.STAFF)
+        .set('Origin', 'http://localhost:3000')
+        .set('X-CSRF-Token', 'mock-csrf');
+      expect(res.status).toBe(404);
+    });
+
+    it('should allow SUPER_ADMIN and return 200', async () => {
+      vi.mocked(ClientsService.archiveClient).mockResolvedValue({
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        isArchived: true,
+      } as unknown as import('../../src/features/clients/clients.types').ClientResponse);
+      const res = await request(app)
+        .post('/api/v1/clients/123e4567-e89b-12d3-a456-426614174000/archive')
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('Origin', 'http://localhost:3000')
+        .set('X-CSRF-Token', 'mock-csrf');
+      expect(res.status).toBe(200);
+      expect(res.body.isArchived).toBe(true);
+    });
+  });
+
+  describe('POST /api/v1/clients/:id/restore', () => {
+    it('should deny VIEWER', async () => {
+      const res = await request(app)
+        .post('/api/v1/clients/123e4567-e89b-12d3-a456-426614174000/restore')
+        .set('x-mock-role', UserRole.VIEWER)
+        .set('Origin', 'http://localhost:3000')
+        .set('X-CSRF-Token', 'mock-csrf');
+      expect(res.status).toBe(403);
+    });
+
+    it('should allow STAFF and return 200', async () => {
+      vi.mocked(ClientsService.restoreClient).mockResolvedValue({
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        isArchived: false,
+      } as unknown as import('../../src/features/clients/clients.types').ClientResponse);
+      const res = await request(app)
+        .post('/api/v1/clients/123e4567-e89b-12d3-a456-426614174000/restore')
+        .set('x-mock-role', UserRole.STAFF)
+        .set('Origin', 'http://localhost:3000')
+        .set('X-CSRF-Token', 'mock-csrf');
+      expect(res.status).toBe(200);
+      expect(res.body.isArchived).toBe(false);
     });
   });
 });

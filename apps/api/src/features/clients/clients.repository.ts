@@ -42,7 +42,7 @@ export class ClientsRepository {
   static async createClientAuditLog(
     data: {
       actorUserId: string;
-      action: 'CLIENT_CREATED' | 'CLIENT_UPDATED';
+      action: 'CLIENT_CREATED' | 'CLIENT_UPDATED' | 'CLIENT_ARCHIVED' | 'CLIENT_RESTORED';
       entityId: string;
       requestId: string;
       ipAddress: string;
@@ -112,5 +112,44 @@ export class ClientsRepository {
     }
 
     return where;
+  }
+
+  /**
+   * Acquires a row-level lock on the client for lifecycle transition.
+   * Throws if the transaction client is not provided (must be in a tx).
+   */
+  static async lockClientForLifecycle(clientId: string, tx: ITXClient): Promise<void> {
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "clients"
+      WHERE "id" = ${clientId}::uuid
+      FOR UPDATE
+    `;
+  }
+
+  /**
+   * Archives a client.
+   */
+  static async archiveClient(clientId: string, archivedAt: Date, tx: ITXClient) {
+    return tx.client.update({
+      where: { id: clientId },
+      data: {
+        isArchived: true,
+        archivedAt,
+      },
+    });
+  }
+
+  /**
+   * Restores a client.
+   */
+  static async restoreClient(clientId: string, tx: ITXClient) {
+    return tx.client.update({
+      where: { id: clientId },
+      data: {
+        isArchived: false,
+        archivedAt: null,
+      },
+    });
   }
 }

@@ -65,4 +65,40 @@ export class ClientsController {
       next(error);
     }
   }
+
+  static async archiveClient(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.auth?.user) throw new UnauthorizedError('Unauthorized');
+      const actorUserId = req.auth.user.id;
+      const { clientId } = req.params;
+      const auditContext = {
+        requestId: req.id as string,
+        ipAddress: req.ip || 'unknown',
+        userAgent: req.headers['user-agent'] || 'unknown',
+      };
+
+      const client = await ClientsService.archiveClient(actorUserId, clientId, auditContext);
+      res.status(200).json(client);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async restoreClient(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.auth?.user) throw new UnauthorizedError('Unauthorized');
+      const actorUserId = req.auth.user.id;
+      const { clientId } = req.params;
+      const auditContext = {
+        requestId: req.id as string,
+        ipAddress: req.ip || 'unknown',
+        userAgent: req.headers['user-agent'] || 'unknown',
+      };
+
+      const client = await ClientsService.restoreClient(actorUserId, clientId, auditContext);
+      res.status(200).json(client);
+    } catch (error) {
+      next(error);
+    }
+  }
 }

@@ -114,6 +114,89 @@ export class ClientsService {
       },
     };
   }
+
+  static async archiveClient(
+    actorUserId: string,
+    clientId: string,
+    auditContext: { requestId: string; ipAddress: string; userAgent: string },
+  ): Promise<ClientResponse> {
+    const boundIp = auditContext.ipAddress.substring(0, 64);
+    const boundUa = auditContext.userAgent.substring(0, 500);
+
+    const client = await runInTransaction(async (tx) => {
+      await ClientsRepository.lockClientForLifecycle(clientId, tx);
+      const existing = await ClientsRepository.getClientById(clientId, tx);
+
+      if (!existing) {
+        throw new NotFoundError('Client not found');
+      }
+
+      if (existing.isArchived) {
+        return existing;
+      }
+
+      const archivedAt = new Date();
+      const updated = await ClientsRepository.archiveClient(clientId, archivedAt, tx);
+
+      await ClientsRepository.createClientAuditLog(
+        {
+          actorUserId,
+          action: 'CLIENT_ARCHIVED',
+          entityId: clientId,
+          requestId: auditContext.requestId,
+          ipAddress: boundIp,
+          userAgent: boundUa,
+          metadata: {},
+        },
+        tx,
+      );
+
+      return updated;
+    });
+
+    return mapClientToResponse(client);
+  }
+
+  static async restoreClient(
+    actorUserId: string,
+    clientId: string,
+    auditContext: { requestId: string; ipAddress: string; userAgent: string },
+  ): Promise<ClientResponse> {
+    const boundIp = auditContext.ipAddress.substring(0, 64);
+    const boundUa = auditContext.userAgent.substring(0, 500);
+
+    const client = await runInTransaction(async (tx) => {
+      await ClientsRepository.lockClientForLifecycle(clientId, tx);
+      const existing = await ClientsRepository.getClientById(clientId, tx);
+
+      if (!existing) {
+        throw new NotFoundError('Client not found');
+      }
+
+      if (!existing.isArchived) {
+        return existing;
+      }
+
+      const updated = await ClientsRepository.restoreClient(clientId, tx);
+
+      await ClientsRepository.createClientAuditLog(
+        {
+          actorUserId,
+          action: 'CLIENT_RESTORED',
+          entityId: clientId,
+          requestId: auditContext.requestId,
+          ipAddress: boundIp,
+          userAgent: boundUa,
+          metadata: {},
+        },
+        tx,
+      );
+
+      return updated;
+    });
+
+    return mapClientToResponse(client);
+  }
 }
 
 function getChangedFields(existing: Client, payload: ClientUpdatePayload): string[] {

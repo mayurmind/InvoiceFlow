@@ -256,4 +256,138 @@ describe('ClientsService', () => {
       });
     });
   });
+
+  describe('archiveClient', () => {
+    it('should throw NotFoundError if client does not exist', async () => {
+      vi.mocked(ClientsRepository.getClientById).mockResolvedValue(null);
+      await expect(
+        ClientsService.archiveClient(actorUserId, clientId, auditContext),
+      ).rejects.toThrow(NotFoundError);
+      expect(ClientsRepository.lockClientForLifecycle).toHaveBeenCalledWith(clientId, mockTx);
+    });
+
+    it('should perform same-state no-op if already archived (no update, no audit)', async () => {
+      const archivedDbClient = { ...dbClient, isArchived: true, archivedAt: new Date() };
+      vi.mocked(ClientsRepository.getClientById).mockResolvedValue(
+        archivedDbClient as unknown as import('../../../src/generated/prisma/client').Client,
+      );
+
+      const result = await ClientsService.archiveClient(actorUserId, clientId, auditContext);
+
+      expect(ClientsRepository.archiveClient).not.toHaveBeenCalled();
+      expect(ClientsRepository.createClientAuditLog).not.toHaveBeenCalled();
+      expect(result.isArchived).toBe(true);
+    });
+
+    it('should archive client and create audit if active', async () => {
+      vi.mocked(ClientsRepository.getClientById).mockResolvedValue(
+        dbClient as unknown as import('../../../src/generated/prisma/client').Client,
+      );
+
+      const archivedDate = new Date();
+      const updatedDbClient = { ...dbClient, isArchived: true, archivedAt: archivedDate };
+      vi.mocked(ClientsRepository.archiveClient).mockResolvedValue(
+        updatedDbClient as unknown as import('../../../src/generated/prisma/client').Client,
+      );
+
+      const result = await ClientsService.archiveClient(actorUserId, clientId, auditContext);
+
+      expect(ClientsRepository.lockClientForLifecycle).toHaveBeenCalledWith(clientId, mockTx);
+      expect(ClientsRepository.archiveClient).toHaveBeenCalledWith(
+        clientId,
+        expect.any(Date),
+        mockTx,
+      );
+      expect(ClientsRepository.createClientAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorUserId,
+          action: 'CLIENT_ARCHIVED',
+          entityId: clientId,
+          ipAddress: '127.0.0.1',
+          userAgent: 'test-agent',
+          metadata: {},
+        }),
+        mockTx,
+      );
+      expect(result.isArchived).toBe(true);
+    });
+
+    it('should rollback if audit creation fails', async () => {
+      vi.mocked(ClientsRepository.getClientById).mockResolvedValue(
+        dbClient as unknown as import('../../../src/generated/prisma/client').Client,
+      );
+      vi.mocked(ClientsRepository.createClientAuditLog).mockRejectedValue(
+        new Error('audit failure'),
+      );
+
+      await expect(
+        ClientsService.archiveClient(actorUserId, clientId, auditContext),
+      ).rejects.toThrow('audit failure');
+    });
+  });
+
+  describe('restoreClient', () => {
+    it('should throw NotFoundError if client does not exist', async () => {
+      vi.mocked(ClientsRepository.getClientById).mockResolvedValue(null);
+      await expect(
+        ClientsService.restoreClient(actorUserId, clientId, auditContext),
+      ).rejects.toThrow(NotFoundError);
+      expect(ClientsRepository.lockClientForLifecycle).toHaveBeenCalledWith(clientId, mockTx);
+    });
+
+    it('should perform same-state no-op if already active (no update, no audit)', async () => {
+      vi.mocked(ClientsRepository.getClientById).mockResolvedValue(
+        dbClient as unknown as import('../../../src/generated/prisma/client').Client, // active by default
+      );
+
+      const result = await ClientsService.restoreClient(actorUserId, clientId, auditContext);
+
+      expect(ClientsRepository.restoreClient).not.toHaveBeenCalled();
+      expect(ClientsRepository.createClientAuditLog).not.toHaveBeenCalled();
+      expect(result.isArchived).toBe(false);
+    });
+
+    it('should restore client and create audit if archived', async () => {
+      const archivedDbClient = { ...dbClient, isArchived: true, archivedAt: new Date() };
+      vi.mocked(ClientsRepository.getClientById).mockResolvedValue(
+        archivedDbClient as unknown as import('../../../src/generated/prisma/client').Client,
+      );
+
+      const restoredDbClient = { ...dbClient, isArchived: false, archivedAt: null };
+      vi.mocked(ClientsRepository.restoreClient).mockResolvedValue(
+        restoredDbClient as unknown as import('../../../src/generated/prisma/client').Client,
+      );
+
+      const result = await ClientsService.restoreClient(actorUserId, clientId, auditContext);
+
+      expect(ClientsRepository.lockClientForLifecycle).toHaveBeenCalledWith(clientId, mockTx);
+      expect(ClientsRepository.restoreClient).toHaveBeenCalledWith(clientId, mockTx);
+      expect(ClientsRepository.createClientAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorUserId,
+          action: 'CLIENT_RESTORED',
+          entityId: clientId,
+          ipAddress: '127.0.0.1',
+          userAgent: 'test-agent',
+          metadata: {},
+        }),
+        mockTx,
+      );
+      expect(result.isArchived).toBe(false);
+    });
+
+    it('should rollback if audit creation fails', async () => {
+      const archivedDbClient = { ...dbClient, isArchived: true, archivedAt: new Date() };
+      vi.mocked(ClientsRepository.getClientById).mockResolvedValue(
+        archivedDbClient as unknown as import('../../../src/generated/prisma/client').Client,
+      );
+      vi.mocked(ClientsRepository.createClientAuditLog).mockRejectedValue(
+        new Error('audit failure'),
+      );
+
+      await expect(
+        ClientsService.restoreClient(actorUserId, clientId, auditContext),
+      ).rejects.toThrow('audit failure');
+    });
+  });
 });

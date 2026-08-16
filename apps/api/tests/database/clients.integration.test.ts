@@ -353,4 +353,156 @@ describe('Clients Database Integration', () => {
       expect(idsPage1.some((id) => idsPage2.includes(id))).toBe(false);
     });
   });
+
+  describe('Archive and Restore Flow', () => {
+    let clientId: string;
+
+    beforeAll(async () => {
+      const client = await ClientsService.createClient(
+        actorUserId,
+        {
+          name: 'Lifecycle Test Client',
+          email: 'lifecycle@example.com',
+          phone: '9999999999',
+          gstin: null,
+          pan: null,
+          addressLine1: 'L1',
+          addressLine2: null,
+          city: 'Pune',
+          state: 'Maharashtra',
+          stateCode: '27',
+          postalCode: '411001',
+          country: 'India',
+          notes: null,
+        },
+        { requestId: 'req-lifecycle', ipAddress: '127.0.0.1', userAgent: 'test' },
+      );
+      clientId = client.id;
+    });
+
+    afterAll(async () => {
+      await prisma.client.deleteMany({ where: { id: clientId } });
+    });
+
+    it('concurrent archive requests => exactly one CLIENT_ARCHIVED audit', async () => {
+      const initialClient = await prisma.client.findUnique({ where: { id: clientId } });
+      expect(initialClient?.isArchived).toBe(false);
+
+      const auditCountBefore = await prisma.auditLog.count({
+        where: { action: 'CLIENT_ARCHIVED', entityId: clientId },
+      });
+      expect(auditCountBefore).toBe(0);
+
+      const promises = Array.from({ length: 5 }).map((_, i) =>
+        ClientsService.archiveClient(actorUserId, clientId, {
+          requestId: `req-archive-${i}`,
+          ipAddress: '127.0.0.1',
+          userAgent: 'concurrent-test',
+        }),
+      );
+
+      await Promise.all(promises);
+
+      const archivedClient = await prisma.client.findUnique({ where: { id: clientId } });
+      expect(archivedClient?.isArchived).toBe(true);
+      expect(archivedClient?.archivedAt).not.toBeNull();
+
+      const auditCountAfter = await prisma.auditLog.count({
+        where: { action: 'CLIENT_ARCHIVED', entityId: clientId },
+      });
+      expect(auditCountAfter).toBe(1); // Only one audit log because of lock + same-state check
+    });
+
+    it('repeated archive keeps updatedAt and archivedAt unchanged', async () => {
+      const client1 = await prisma.client.findUnique({ where: { id: clientId } });
+
+      await ClientsService.archiveClient(actorUserId, clientId, {
+        requestId: 'req-archive-repeat',
+        ipAddress: '127.0.0.1',
+        userAgent: 'test',
+      });
+
+      const client2 = await prisma.client.findUnique({ where: { id: clientId } });
+      expect(client2?.updatedAt).toEqual(client1?.updatedAt);
+      expect(client2?.archivedAt).toEqual(client1?.archivedAt);
+
+      const auditCount = await prisma.auditLog.count({
+        where: { action: 'CLIENT_ARCHIVED', entityId: clientId },
+      });
+      expect(auditCount).toBe(1); // Still 1
+    });
+
+    it('archived Client remains readable and profile-editable under P4.3', async () => {
+      const result = await ClientsService.getClientById(clientId);
+      expect(result.id).toBe(clientId);
+
+      const updated = await ClientsService.updateClient(
+        actorUserId,
+        clientId,
+        {
+          name: 'Lifecycle Test Client Updated',
+          email: 'lifecycle@example.com',
+          phone: '9999999999',
+          gstin: null,
+          pan: null,
+          addressLine1: 'L1',
+          addressLine2: null,
+          city: 'Pune',
+          state: 'Maharashtra',
+          stateCode: '27',
+          postalCode: '411001',
+          country: 'India',
+          notes: 'Archived edit',
+        },
+        { requestId: 'req-archived-edit', ipAddress: '127.0.0.1', userAgent: 'test' },
+      );
+      expect(updated.name).toBe('Lifecycle Test Client Updated');
+    });
+
+    it('concurrent restore requests => exactly one CLIENT_RESTORED audit', async () => {
+      const promises = Array.from({ length: 5 }).map((_, i) =>
+        ClientsService.restoreClient(actorUserId, clientId, {
+          requestId: `req-restore-${i}`,
+          ipAddress: '127.0.0.1',
+          userAgent: 'concurrent-test',
+        }),
+      );
+
+      await Promise.all(promises);
+
+      const restoredClient = await prisma.client.findUnique({ where: { id: clientId } });
+      expect(restoredClient?.isArchived).toBe(false);
+      expect(restoredClient?.archivedAt).toBeNull();
+
+      const auditCountAfter = await prisma.auditLog.count({
+        where: { action: 'CLIENT_RESTORED', entityId: clientId },
+      });
+      expect(auditCountAfter).toBe(1);
+    });
+
+    it('repeated restore keeps updatedAt unchanged', async () => {
+      const client1 = await prisma.client.findUnique({ where: { id: clientId } });
+
+      await ClientsService.restoreClient(actorUserId, clientId, {
+        requestId: 'req-restore-repeat',
+        ipAddress: '127.0.0.1',
+        userAgent: 'test',
+      });
+
+      const client2 = await prisma.client.findUnique({ where: { id: clientId } });
+      expect(client2?.updatedAt).toEqual(client1?.updatedAt);
+
+      const auditCount = await prisma.auditLog.count({
+        where: { action: 'CLIENT_RESTORED', entityId: clientId },
+      });
+      expect(auditCount).toBe(1); // Still 1
+    });
+
+    it('audit metadata contains no PII', async () => {
+      const auditLog = await prisma.auditLog.findFirst({
+        where: { entityId: clientId, action: 'CLIENT_ARCHIVED' },
+      });
+      expect(auditLog?.metadata).toEqual({});
+    });
+  });
 });
