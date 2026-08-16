@@ -114,16 +114,55 @@ describe('BusinessSettings Integration', () => {
     const meta = getMetadata();
 
     // Create
-    await service.updateBusinessSettings({ payload, ...meta });
+    const { settings: initialSettings } = await service.updateBusinessSettings({
+      payload,
+      ...meta,
+    });
     const initialCount = await prisma.auditLog.count();
 
     // Update with exact same payload
-    const { created } = await service.updateBusinessSettings({ payload, ...meta });
+    const { created, settings: finalSettings } = await service.updateBusinessSettings({
+      payload,
+      ...meta,
+    });
 
     expect(created).toBe(false);
-    const finalCount = await prisma.auditLog.count();
+    expect(finalSettings.updatedAt.getTime()).toBe(initialSettings.updatedAt.getTime());
 
+    const finalCount = await prisma.auditLog.count();
     expect(finalCount).toBe(initialCount);
+  });
+
+  it('does not log sensitive values in BUSINESS_SETTINGS_UPDATED audit metadata', async () => {
+    const payload = getValidPayload();
+    const meta = getMetadata();
+
+    await service.updateBusinessSettings({ payload, ...meta });
+
+    const sensitivePayload: BusinessSettingsUpdatePayload = {
+      ...payload,
+      bankAccountNumber: 'SECRET_BANK_123',
+      bankIfsc: 'SECRET_IFSC',
+      upiId: 'SECRET_UPI',
+    };
+
+    await service.updateBusinessSettings({ payload: sensitivePayload, ...meta });
+
+    const audit = await prisma.auditLog.findFirst({
+      where: { action: 'BUSINESS_SETTINGS_UPDATED' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    expect(audit).not.toBeNull();
+    const metadataStr = JSON.stringify(audit?.metadata);
+
+    expect(audit?.metadata).toMatchObject({
+      changedFields: expect.arrayContaining(['bankAccountNumber', 'bankIfsc', 'upiId']),
+    });
+
+    expect(metadataStr).not.toContain('SECRET_BANK_123');
+    expect(metadataStr).not.toContain('SECRET_IFSC');
+    expect(metadataStr).not.toContain('SECRET_UPI');
   });
 
   it('prevents concurrent configuration via transaction-scoped advisory locks', async () => {
@@ -156,11 +195,6 @@ describe('BusinessSettings Integration', () => {
     const meta = getMetadata();
     const payload = getValidPayload();
 
-    // Force an error inside the transaction by using an invalid UUID for actorUserId
-    // which violates foreign key constraints (we aren't creating a User first here,
-    // but the AuditLog model requires a valid User ID for actorUserId... wait, actorUserId is optional in Prisma schema?
-    // Wait, let's just make the transaction throw by mocking or passing a bad payload that Prisma rejects.
-    // Let's pass a string too long for invoicePrefix (db.VarChar(5)).
     const badPayload = { ...payload, invoicePrefix: 'TOOLONGPREFIX' };
 
     await expect(
@@ -172,5 +206,36 @@ describe('BusinessSettings Integration', () => {
 
     const audits = await prisma.auditLog.count();
     expect(audits).toBe(0);
+  });
+
+  it('rolls back completely if audit insertion fails due to FK violation', async () => {
+    const meta = getMetadata();
+    const payload = getValidPayload();
+
+    // Configure first
+    const { settings: initialSettings } = await service.updateBusinessSettings({
+      payload,
+      ...meta,
+    });
+    const initialCount = await prisma.auditLog.count();
+
+    // Update with missing actorUserId (to trigger FK on audit log)
+    const badMeta = {
+      ...meta,
+      actorUserId: '00000000-0000-0000-0000-000000000000',
+    };
+
+    const updatePayload = { ...payload, legalName: 'SHOULD NOT SAVE' };
+
+    await expect(
+      service.updateBusinessSettings({ payload: updatePayload, ...badMeta }),
+    ).rejects.toThrow();
+
+    const currentSettings = await prisma.businessSettings.findFirstOrThrow();
+    expect(currentSettings.legalName).toBe(initialSettings.legalName);
+    expect(currentSettings.updatedAt.getTime()).toBe(initialSettings.updatedAt.getTime());
+
+    const audits = await prisma.auditLog.count();
+    expect(audits).toBe(initialCount);
   });
 });

@@ -229,6 +229,38 @@ describe('Clients Database Integration', () => {
       const dbCheck = await prisma.client.findUnique({ where: { id: archivedClient.id } });
       expect(dbCheck!.isArchived).toBe(true);
     });
+
+    it('rolls back completely if CLIENT_UPDATED audit insertion fails due to FK violation', async () => {
+      const payload = { ...basePayload, name: 'Rollback Client', email: 'rollback@example.com' };
+      const client = await ClientsService.createClient(actorUserId, payload, {
+        ...auditContext,
+        requestId: 'req-db-rb-1',
+      });
+      createdClientIds.push(client.id);
+
+      const dbClientBefore = await prisma.client.findUnique({ where: { id: client.id } });
+      expect(dbClientBefore).not.toBeNull();
+
+      // Use a nonexistent actor to force FK failure on audit log
+      const nonexistentActorId = '00000000-0000-0000-0000-000000000000';
+      const updatedPayload = { ...payload, name: 'SHOULD NOT SAVE' };
+
+      await expect(
+        ClientsService.updateClient(nonexistentActorId, client.id, updatedPayload, {
+          ...auditContext,
+          requestId: 'req-db-rb-2',
+        }),
+      ).rejects.toThrow();
+
+      // Refetch
+      const dbClientAfter = await prisma.client.findUnique({ where: { id: client.id } });
+      expect(dbClientAfter!.name).toBe('Rollback Client'); // profile remains unchanged
+
+      const audit = await prisma.auditLog.findFirst({
+        where: { entityId: client.id, action: 'CLIENT_UPDATED' },
+      });
+      expect(audit).toBeNull();
+    });
   });
 
   describe('Search, Filter and Pagination', () => {
@@ -503,6 +535,49 @@ describe('Clients Database Integration', () => {
         where: { entityId: clientId, action: 'CLIENT_ARCHIVED' },
       });
       expect(auditLog?.metadata).toEqual({});
+    });
+
+    it('rolls back completely if CLIENT_ARCHIVED audit insertion fails due to FK violation', async () => {
+      // Create a fresh active client
+      const freshClient = await ClientsService.createClient(
+        actorUserId,
+        {
+          name: 'Rollback Archive Client',
+          email: 'rb-archive@example.com',
+          phone: null,
+          gstin: null,
+          pan: null,
+          addressLine1: 'L1',
+          addressLine2: null,
+          city: 'Pune',
+          state: 'Maharashtra',
+          stateCode: '27',
+          postalCode: '411001',
+          country: 'India',
+          notes: null,
+        },
+        { requestId: 'req-archive-rb-1', ipAddress: '127.0.0.1', userAgent: 'test' },
+      );
+
+      const nonexistentActorId = '00000000-0000-0000-0000-000000000000';
+
+      await expect(
+        ClientsService.archiveClient(nonexistentActorId, freshClient.id, {
+          requestId: 'req-archive-rb-2',
+          ipAddress: '127.0.0.1',
+          userAgent: 'test',
+        }),
+      ).rejects.toThrow();
+
+      // Refetch
+      const dbClientAfter = await prisma.client.findUnique({ where: { id: freshClient.id } });
+      expect(dbClientAfter!.isArchived).toBe(false);
+      expect(dbClientAfter!.archivedAt).toBeNull();
+
+      const audit = await prisma.auditLog.findFirst({
+        where: { entityId: freshClient.id, action: 'CLIENT_ARCHIVED' },
+      });
+      expect(audit).toBeNull();
     });
   });
 });
