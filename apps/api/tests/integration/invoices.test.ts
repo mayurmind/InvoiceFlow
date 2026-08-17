@@ -15,6 +15,7 @@ import {
   UnauthorizedError,
   NotFoundError,
   ConflictError,
+  ValidationError,
 } from '../../src/errors/application.error';
 import type { AuthContext } from '../../src/features/auth/auth.types';
 import { UserRole } from '../../src/generated/prisma/client';
@@ -198,6 +199,21 @@ describe('Invoices Integration - HTTP & Validation Layer', () => {
         .send({ ...validPayload, invoiceDate: '2026-02-30' }); // Invalid date
 
       expect(response.status).toBe(400);
+    });
+
+    it('returns 400 for valid calendar date in the future (Asia/Kolkata)', async () => {
+      vi.mocked(InvoicesService.createInvoice).mockRejectedValueOnce(
+        new ValidationError('invoiceDate cannot be in the future (Asia/Kolkata timezone)'),
+      );
+
+      const response = await request(app)
+        .post('/api/v1/invoices')
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .send({ ...validPayload, invoiceDate: '2030-01-01' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
     });
 
     it('returns 400 for invalid financial input', async () => {

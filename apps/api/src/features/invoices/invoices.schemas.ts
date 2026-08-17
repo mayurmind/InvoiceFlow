@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { VALID_STATE_CODES } from '../business-settings/business-settings.constants';
 
-// Strict calendar date validation that checks if the date actually exists
+// Strict calendar date validation that checks if the date actually exists (UTC safe)
 export const strictCalendarDateSchema = z.string().superRefine((val, ctx) => {
   const regex = /^\d{4}-\d{2}-\d{2}$/;
   if (!regex.test(val)) {
@@ -12,11 +12,15 @@ export const strictCalendarDateSchema = z.string().superRefine((val, ctx) => {
     return;
   }
 
-  // Check if date is valid (e.g., rejects 2026-02-31)
+  // Check if date is valid (e.g., rejects 2026-02-31) using UTC parsing
   const [year, month, day] = val.split('-').map(Number);
-  const date = new Date(year, month - 1, day);
+  const date = new Date(Date.UTC(year, month - 1, day));
 
-  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: 'Invalid calendar date',

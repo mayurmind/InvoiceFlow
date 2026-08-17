@@ -185,4 +185,154 @@ describe('InvoicesService', () => {
     expect(res.items.length).toBe(1);
     expect(res.items[0].totalAmount).toBe('118.00');
   });
+
+  describe('invoiceDate validation against Asia/Kolkata timezone', () => {
+    it('accepts invoiceDate == Asia/Kolkata today', async () => {
+      vi.mocked(businessSettingsRepo.getBusinessSettings).mockResolvedValue({
+        stateCode: '27',
+        gstin: 'some',
+        defaultDueDays: 15,
+      } as unknown as BusinessSettings);
+      vi.mocked(ClientsRepository.getClientById).mockResolvedValue({
+        id: 'c1',
+        isArchived: false,
+        stateCode: '27',
+      } as unknown as Client);
+      vi.mocked(InvoicesRepository.createDraftInvoice).mockResolvedValue({
+        id: 'inv-1',
+      } as unknown as Invoice);
+      vi.mocked(InvoicesRepository.createInvoiceItems).mockResolvedValue(undefined as never);
+      vi.mocked(InvoicesRepository.createInvoiceAuditLog).mockResolvedValue(undefined);
+      vi.mocked(InvoicesRepository.getInvoiceWithItems).mockResolvedValue({
+        id: 'inv-1',
+        items: [],
+        invoiceDate: new Date(),
+        dueDate: new Date(),
+        subtotal: { toFixed: () => '0' },
+        discountTotal: { toFixed: () => '0' },
+        taxableTotal: { toFixed: () => '0' },
+        cgstTotal: { toFixed: () => '0' },
+        sgstTotal: { toFixed: () => '0' },
+        igstTotal: { toFixed: () => '0' },
+        total: { toFixed: () => '0' },
+        paidAmount: { toFixed: () => '0' },
+        outstandingAmount: { toFixed: () => '0' },
+      } as never);
+
+      vi.useFakeTimers();
+      // 2026-08-16T12:00:00Z -> Asia/Kolkata is 2026-08-16 17:30
+      vi.setSystemTime(new Date('2026-08-16T12:00:00Z'));
+
+      const payload = { ...basePayload, invoiceDate: '2026-08-16' };
+      await expect(
+        InvoicesService.createInvoice('u1', payload, auditContext),
+      ).resolves.toBeDefined();
+      vi.useRealTimers();
+    });
+
+    it('accepts invoiceDate < Asia/Kolkata today', async () => {
+      vi.mocked(businessSettingsRepo.getBusinessSettings).mockResolvedValue({
+        stateCode: '27',
+        gstin: 'some',
+        defaultDueDays: 15,
+      } as never);
+      vi.mocked(ClientsRepository.getClientById).mockResolvedValue({
+        id: 'c1',
+        isArchived: false,
+        stateCode: '27',
+      } as never);
+      vi.mocked(InvoicesRepository.createDraftInvoice).mockResolvedValue({ id: 'inv-1' } as never);
+      vi.mocked(InvoicesRepository.createInvoiceItems).mockResolvedValue(undefined as never);
+      vi.mocked(InvoicesRepository.createInvoiceAuditLog).mockResolvedValue(undefined);
+      vi.mocked(InvoicesRepository.getInvoiceWithItems).mockResolvedValue({
+        id: 'inv-1',
+        items: [],
+        invoiceDate: new Date(),
+        dueDate: new Date(),
+        subtotal: { toFixed: () => '0' },
+        discountTotal: { toFixed: () => '0' },
+        taxableTotal: { toFixed: () => '0' },
+        cgstTotal: { toFixed: () => '0' },
+        sgstTotal: { toFixed: () => '0' },
+        igstTotal: { toFixed: () => '0' },
+        total: { toFixed: () => '0' },
+        paidAmount: { toFixed: () => '0' },
+        outstandingAmount: { toFixed: () => '0' },
+      } as never);
+
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-16T12:00:00Z'));
+
+      const payload = { ...basePayload, invoiceDate: '2026-08-15' };
+      await expect(
+        InvoicesService.createInvoice('u1', payload, auditContext),
+      ).resolves.toBeDefined();
+      vi.useRealTimers();
+    });
+
+    it('rejects invoiceDate > Asia/Kolkata today', async () => {
+      vi.mocked(businessSettingsRepo.getBusinessSettings).mockResolvedValue({
+        stateCode: '27',
+        gstin: 'some',
+      } as never);
+      vi.mocked(ClientsRepository.getClientById).mockResolvedValue({
+        id: 'c1',
+        isArchived: false,
+        stateCode: '27',
+      } as never);
+
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-16T12:00:00Z'));
+
+      const payload = { ...basePayload, invoiceDate: '2026-08-17' };
+      await expect(InvoicesService.createInvoice('u1', payload, auditContext)).rejects.toThrow(
+        ValidationError,
+      );
+      vi.useRealTimers();
+    });
+
+    it('correctly uses Asia/Kolkata timezone boundary, not UTC', async () => {
+      vi.mocked(businessSettingsRepo.getBusinessSettings).mockResolvedValue({
+        stateCode: '27',
+        gstin: 'some',
+        defaultDueDays: 15,
+      } as never);
+      vi.mocked(ClientsRepository.getClientById).mockResolvedValue({
+        id: 'c1',
+        isArchived: false,
+        stateCode: '27',
+      } as never);
+
+      vi.useFakeTimers();
+      // 2026-08-16T22:00:00Z is 2026-08-17 03:30 in Asia/Kolkata
+      // So Kolkata today is 2026-08-17.
+      vi.setSystemTime(new Date('2026-08-16T22:00:00Z'));
+
+      // Since Kolkata today is 2026-08-17, payload with 2026-08-17 should be accepted, even though UTC is 2026-08-16
+      vi.mocked(InvoicesRepository.createDraftInvoice).mockResolvedValue({ id: 'inv-1' } as never);
+      vi.mocked(InvoicesRepository.createInvoiceItems).mockResolvedValue(undefined as never);
+      vi.mocked(InvoicesRepository.createInvoiceAuditLog).mockResolvedValue(undefined);
+      vi.mocked(InvoicesRepository.getInvoiceWithItems).mockResolvedValue({
+        id: 'inv-1',
+        items: [],
+        invoiceDate: new Date(),
+        dueDate: new Date(),
+        subtotal: { toFixed: () => '0' },
+        discountTotal: { toFixed: () => '0' },
+        taxableTotal: { toFixed: () => '0' },
+        cgstTotal: { toFixed: () => '0' },
+        sgstTotal: { toFixed: () => '0' },
+        igstTotal: { toFixed: () => '0' },
+        total: { toFixed: () => '0' },
+        paidAmount: { toFixed: () => '0' },
+        outstandingAmount: { toFixed: () => '0' },
+      } as never);
+
+      const payload = { ...basePayload, invoiceDate: '2026-08-17' };
+      await expect(
+        InvoicesService.createInvoice('u1', payload, auditContext),
+      ).resolves.toBeDefined();
+      vi.useRealTimers();
+    });
+  });
 });

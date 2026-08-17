@@ -57,6 +57,12 @@ export class InvoicesService {
 
         // 8. Resolve dates
         const invoiceDateObj = parseCalendarDate(payload.invoiceDate);
+
+        const kolkataToday = getAsiaKolkataToday();
+        if (payload.invoiceDate > kolkataToday) {
+          throw new ValidationError('invoiceDate cannot be in the future (Asia/Kolkata timezone)');
+        }
+
         let dueDateObj: Date;
         if (payload.dueDate) {
           dueDateObj = parseCalendarDate(payload.dueDate);
@@ -242,4 +248,14 @@ function addDaysToCalendarDate(date: Date, days: number): Date {
   const d = new Date(date.getTime());
   d.setUTCDate(d.getUTCDate() + days);
   return d;
+}
+
+function getAsiaKolkataToday(): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(new Date());
 }
