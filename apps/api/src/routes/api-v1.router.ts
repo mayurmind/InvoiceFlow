@@ -4,6 +4,7 @@ import { authRouter } from '../features/auth/auth.routes';
 import { usersRouter } from '../features/users/users.routes';
 import { businessSettingsRouter } from '../features/business-settings/business-settings.routes';
 import { clientsRouter } from '../features/clients/clients.routes';
+import { invoicesRouter } from '../features/invoices/invoices.routes';
 
 export const apiV1Router = Router();
 
@@ -13,3 +14,4 @@ apiV1Router.use('/auth', authRouter);
 apiV1Router.use('/users', usersRouter);
 apiV1Router.use('/business-settings', businessSettingsRouter);
 apiV1Router.use('/clients', clientsRouter);
+apiV1Router.use('/invoices', invoicesRouter);
