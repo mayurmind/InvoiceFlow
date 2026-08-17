@@ -6,7 +6,12 @@ import { requireRoles } from '../auth/rbac.middleware';
 import { requireCsrfToken } from '../auth/csrf.middleware';
 import { validateRequest } from '../../middleware/validation.middleware';
 import { InvoicesController } from './invoices.controller';
-import { invoiceCreateSchema } from './invoices.schemas';
+import {
+  invoiceCreateSchema,
+  invoiceUpdateSchema,
+  invoiceListQuerySchema,
+  invoiceIdParamSchema,
+} from './invoices.schemas';
 
 const router = Router();
 
@@ -19,6 +24,35 @@ router.post(
   requireCsrfToken,
   validateRequest({ body: invoiceCreateSchema }),
   InvoicesController.createInvoice,
+);
+
+router.get(
+  '/',
+  authenticateRequest,
+  requirePasswordChangeCompleted,
+  requireRoles(UserRole.SUPER_ADMIN, UserRole.STAFF, UserRole.VIEWER),
+  validateRequest({ query: invoiceListQuerySchema }),
+  InvoicesController.listInvoices,
+);
+
+router.get(
+  '/:invoiceId',
+  authenticateRequest,
+  requirePasswordChangeCompleted,
+  requireRoles(UserRole.SUPER_ADMIN, UserRole.STAFF, UserRole.VIEWER),
+  validateRequest({ params: invoiceIdParamSchema }),
+  InvoicesController.getInvoiceById,
+);
+
+router.put(
+  '/:invoiceId',
+  originGuard,
+  authenticateRequest,
+  requirePasswordChangeCompleted,
+  requireRoles(UserRole.SUPER_ADMIN, UserRole.STAFF),
+  requireCsrfToken,
+  validateRequest({ params: invoiceIdParamSchema, body: invoiceUpdateSchema }),
+  InvoicesController.updateInvoice,
 );
 
 export { router as invoicesRouter };

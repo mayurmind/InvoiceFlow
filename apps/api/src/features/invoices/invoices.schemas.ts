@@ -61,3 +61,42 @@ export const invoiceCreateSchema = z
       .max(100),
   })
   .strict();
+
+export const invoiceUpdateSchema = invoiceCreateSchema;
+
+export const invoiceIdParamSchema = z
+  .object({
+    invoiceId: z.string().uuid(),
+  })
+  .strict();
+
+import { InvoiceStatus } from '../../generated/prisma/client';
+
+export const invoiceListQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    status: z.nativeEnum(InvoiceStatus).optional(),
+    clientId: z.string().uuid().optional(),
+    invoiceDateFrom: strictCalendarDateSchema.optional(),
+    invoiceDateTo: strictCalendarDateSchema.optional(),
+    dueDateFrom: strictCalendarDateSchema.optional(),
+    dueDateTo: strictCalendarDateSchema.optional(),
+  })
+  .strict()
+  .superRefine((val, ctx) => {
+    if (val.invoiceDateFrom && val.invoiceDateTo && val.invoiceDateFrom > val.invoiceDateTo) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'invoiceDateFrom cannot be after invoiceDateTo',
+        path: ['invoiceDateFrom'],
+      });
+    }
+    if (val.dueDateFrom && val.dueDateTo && val.dueDateFrom > val.dueDateTo) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'dueDateFrom cannot be after dueDateTo',
+        path: ['dueDateFrom'],
+      });
+    }
+  });
