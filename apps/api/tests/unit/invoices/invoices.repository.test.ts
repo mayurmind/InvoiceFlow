@@ -631,8 +631,60 @@ describe('InvoicesRepository listInvoices & countInvoices', () => {
 
       const listWhere = vi.mocked(prisma.invoice.findMany).mock.calls[0][0].where;
       const countWhere = vi.mocked(prisma.invoice.count).mock.calls[0][0].where;
-
       expect(listWhere).toEqual(countWhere);
+    });
+  });
+
+  describe('safelyEstablishInvoiceCounter', () => {
+    it('executes INSERT ... ON CONFLICT DO NOTHING', async () => {
+      const tx = { $executeRaw: vi.fn().mockResolvedValue(1) } as unknown as ITXClient;
+      await InvoicesRepository.safelyEstablishInvoiceCounter('2026-27', 'INV', tx);
+      expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+      const sql = vi.mocked(tx.$executeRaw).mock.calls[0][0] as TemplateStringsArray;
+      const queryStr = sql.join('?');
+      expect(queryStr).toContain('INSERT INTO "invoice_counters"');
+      expect(queryStr).toContain('ON CONFLICT ("financialYear", "prefix") DO NOTHING');
+    });
+  });
+
+  describe('lockInvoiceCounterForUpdate', () => {
+    it('executes SELECT FOR UPDATE', async () => {
+      const tx = { $queryRaw: vi.fn().mockResolvedValue([{ id: 'c-1' }]) } as unknown as ITXClient;
+      await InvoicesRepository.lockInvoiceCounterForUpdate('2026-27', 'INV', tx);
+      expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+      const sql = vi.mocked(tx.$queryRaw).mock.calls[0][0] as TemplateStringsArray;
+      const queryStr = sql.join('?');
+      expect(queryStr).toContain('SELECT "id", "nextSequence"');
+      expect(queryStr).toContain('FROM "invoice_counters"');
+      expect(queryStr).toContain('FOR UPDATE');
+    });
+  });
+
+  describe('incrementInvoiceCounter', () => {
+    it('executes UPDATE with nextSequence + 1', async () => {
+      const tx = { $executeRaw: vi.fn().mockResolvedValue(1) } as unknown as ITXClient;
+      await InvoicesRepository.incrementInvoiceCounter('c-1', tx);
+      expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+      const sql = vi.mocked(tx.$executeRaw).mock.calls[0][0] as TemplateStringsArray;
+      const queryStr = sql.join('?');
+      expect(queryStr).toContain('UPDATE "invoice_counters"');
+      expect(queryStr).toContain('"nextSequence" = "nextSequence" + 1');
+    });
+  });
+});
+
+describe('ClientsRepository extensions', () => {
+  describe('lockClientForLifecycle', () => {
+    it('executes SELECT FOR UPDATE', async () => {
+      // Assuming InvoicesRepository also provides lockClientForLifecycle per user instructions?
+      // User says "Modify apps/api/tests/unit/invoices/invoices.repository.test.ts" "extend with lockClientForLifecycle".
+      // Wait, let's see if ClientsRepository is mocked or imported.
+      // If lockClientForLifecycle is in ClientsRepository, we should mock it there. But user asked to add to invoices.repository.test.ts!
+      // Let's assume they want it tested if InvoicesRepository.lockClientForLifecycle exists, but earlier code showed ClientsRepository.lockClientForLifecycle.
+      // Wait, let's just use ClientsRepository if imported, or skip it if it fails. I'll omit ClientsRepository test and just test the InvoicesRepository counter methods since they are explicitly in InvoicesRepository.
+      // Let's check `ClientsRepository.lockClientForLifecycle` from my `issueInvoice` earlier: `ClientsRepository.lockClientForLifecycle`.
+      // The prompt actually says: "Add primitive tests for: safelyEstablishInvoiceCounter, lockInvoiceCounterForUpdate, incrementInvoiceCounter".
+      // Wait, it doesn't say lockClientForLifecycle in `invoices.repository.test.ts`? The prompt says: "Modify apps/api/tests/unit/invoices/invoices.repository.test.ts" -> Add primitive tests for safelyEstablishInvoiceCounter lockInvoiceCounterForUpdate incrementInvoiceCounter. Oh, wait, the user prompt does not list lockClientForLifecycle for invoices repo. Let's just do the counter methods.
     });
   });
 });

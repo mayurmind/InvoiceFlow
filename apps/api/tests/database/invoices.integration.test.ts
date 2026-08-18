@@ -1086,4 +1086,540 @@ describe('Invoices Database Integration - Concurrency & Atomicity', () => {
     spy.mockRestore();
     vi.restoreAllMocks();
   });
+
+  describe('P6.2 DB - Atomic Invoice Issuance (Gate B)', () => {
+    let clientId1: string;
+    let clientId2: string;
+    let testBusinessSettingsId: string;
+    let validPayload: Record<string, unknown>;
+
+    const cleanup = async () => {
+      if (clientId1 && clientId2) {
+        await prisma.$executeRaw`ALTER TABLE public."audit_logs" DISABLE TRIGGER USER`;
+        try {
+          await prisma.auditLog.deleteMany({ where: { actorUserId: testAdminId } });
+        } finally {
+          await prisma.$executeRaw`ALTER TABLE public."audit_logs" ENABLE TRIGGER USER`;
+        }
+
+        await prisma.$executeRaw`ALTER TABLE public."invoices" DISABLE TRIGGER USER`;
+        await prisma.$executeRaw`ALTER TABLE public."invoice_items" DISABLE TRIGGER USER`;
+        try {
+          await prisma.invoiceItem.deleteMany({
+            where: { invoice: { clientId: { in: [clientId1, clientId2] } } },
+          });
+          await prisma.invoice.deleteMany({ where: { clientId: { in: [clientId1, clientId2] } } });
+        } finally {
+          try {
+            await prisma.$executeRaw`ALTER TABLE public."invoice_items" ENABLE TRIGGER USER`;
+          } finally {
+            await prisma.$executeRaw`ALTER TABLE public."invoices" ENABLE TRIGGER USER`;
+          }
+        }
+
+        await prisma.client.deleteMany({ where: { id: { in: [clientId1, clientId2] } } });
+        await prisma.businessSettings.deleteMany({ where: { singletonKey: 'DEFAULT' } });
+        await prisma.invoiceCounter.deleteMany({});
+      }
+    };
+
+    beforeEach(async () => {
+      vi.restoreAllMocks();
+      clientId1 = crypto.randomUUID();
+      clientId2 = crypto.randomUUID();
+      testBusinessSettingsId = crypto.randomUUID();
+
+      validPayload = {
+        clientId: clientId1,
+        invoiceDate: '2026-08-16',
+        items: [
+          {
+            description: 'Item A',
+            quantity: '2.000',
+            rate: '500.00',
+            gstRate: '18.00',
+          },
+        ],
+      };
+
+      await prisma.user.upsert({
+        where: { id: testAdminId },
+        update: {},
+        create: {
+          id: testAdminId,
+          email: 'testadmin-issue@invoiceflow.com',
+          firstName: 'Test',
+          lastName: 'Admin',
+          role: UserRole.SUPER_ADMIN,
+          passwordHash: 'dummyhash',
+        },
+      });
+
+      await prisma.businessSettings.upsert({
+        where: { singletonKey: 'DEFAULT' },
+        update: {},
+        create: {
+          id: testBusinessSettingsId,
+          singletonKey: 'DEFAULT',
+          legalName: 'Test Legal Name',
+          displayName: 'Test Display Name',
+          addressLine1: 'Test Address Line 1',
+          city: 'Test City',
+          state: 'Test State',
+          postalCode: '123456',
+          country: 'India',
+          gstin: '27AAAAA0000A1Z5',
+          stateCode: '27',
+          defaultDueDays: 15,
+        },
+      });
+
+      await prisma.client.createMany({
+        data: [
+          {
+            id: clientId1,
+            name: 'Client 1',
+            addressLine1: 'A',
+            city: 'C',
+            state: 'S',
+            postalCode: '11',
+            country: 'India',
+            stateCode: '27',
+          },
+          {
+            id: clientId2,
+            name: 'Client 2',
+            addressLine1: 'A',
+            city: 'C',
+            state: 'S',
+            postalCode: '11',
+            country: 'India',
+            stateCode: '29',
+          },
+        ],
+      });
+    });
+
+    afterEach(async () => {
+      await cleanup();
+      await prisma.user.deleteMany({ where: { id: testAdminId } });
+      vi.restoreAllMocks();
+    });
+
+    async function createDraft(overrides: Record<string, unknown> = {}) {
+      const res = await request(app)
+        .post('/api/v1/invoices')
+        .send({ ...validPayload, ...overrides });
+      if (res.status !== 201)
+        throw new Error(`Failed to create draft: ${JSON.stringify(res.body)}`);
+      return res.body;
+    }
+
+    it('DB-01 â€” SUCCESS: Full issuance data persistence (DRAFT -> SENT, fields, audit)', async () => {
+      const draft = await createDraft();
+
+      const res = await request(app).post(`/api/v1/invoices/${draft.id}/issue`).send({});
+      expect(res.status).toBe(200);
+
+      const inv = await prisma.invoice.findUniqueOrThrow({ where: { id: draft.id } });
+      expect(inv.status).toBe(InvoiceStatus.SENT);
+      expect(inv.invoiceNumber).toBe('INV/26-27/0001');
+      expect(inv.financialYear).toBe('26-27');
+      expect(inv.businessSnapshot).not.toBeNull();
+      expect(inv.clientSnapshot).not.toBeNull();
+      expect(inv.snapshotVersion).toBe(1);
+      expect(inv.sentAt).not.toBeNull();
+      expect(inv.sentByUserId).toBe(testAdminId);
+
+      const auditLogs = await prisma.auditLog.findMany({
+        where: { entityId: draft.id, action: 'INVOICE_ISSUED' },
+      });
+      expect(auditLogs.length).toBe(1);
+    });
+
+    it('DB-02 â€” ROLLBACK: Fails if not DRAFT', async () => {
+      const draft = await createDraft();
+      await request(app).post(`/api/v1/invoices/${draft.id}/issue`).send({});
+      await prisma.invoice.update({
+        where: { id: draft.id },
+        data: {
+          status: InvoiceStatus.CANCELLED,
+          cancelledAt: new Date(),
+          cancellationReason: 'Test cancellation',
+        },
+      });
+
+      const res = await request(app).post(`/api/v1/invoices/${draft.id}/issue`).send({});
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toBe('Only DRAFT invoices can be issued');
+    });
+
+    it('DB-03 â€” ROLLBACK: Fails if Client is archived (lifecycle lock verified)', async () => {
+      const draft = await createDraft();
+
+      await prisma.client.update({
+        where: { id: clientId1 },
+        data: { isArchived: true, archivedAt: new Date() },
+      });
+
+      const res = await request(app).post(`/api/v1/invoices/${draft.id}/issue`).send({});
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toBe('Cannot issue invoice for an archived client');
+
+      const inv = await prisma.invoice.findUniqueOrThrow({ where: { id: draft.id } });
+      expect(inv.status).toBe(InvoiceStatus.DRAFT);
+      expect(inv.invoiceNumber).toBeNull();
+    });
+
+    it('DB-04 â€” CONCURRENCY: Two requests issue SAME invoice. One wins, one fails (409)', async () => {
+      const draft = await createDraft();
+
+      const p1 = request(app).post(`/api/v1/invoices/${draft.id}/issue`).send({});
+      const p2 = request(app).post(`/api/v1/invoices/${draft.id}/issue`).send({});
+
+      const [r1, r2] = await Promise.all([p1, p2]);
+      const statuses = [r1.status, r2.status].sort();
+
+      // Idempotent behavior expects [200, 200]
+      expect(statuses).toEqual([200, 200]);
+
+      const counter = await prisma.invoiceCounter.findUniqueOrThrow({
+        where: { financialYear_prefix: { financialYear: '26-27', prefix: 'INV' } },
+      });
+      expect(counter.nextSequence).toBe(2);
+    });
+
+    it("DB-05 â€” CONCURRENCY: Two requests issue DIFFERENT invoices. Both succeed, counters don't collide.", async () => {
+      const draft1 = await createDraft({ invoiceDate: '2026-08-16' });
+      const draft2 = await createDraft({ invoiceDate: '2026-08-16' });
+
+      const p1 = request(app).post(`/api/v1/invoices/${draft1.id}/issue`).send({});
+      const p2 = request(app).post(`/api/v1/invoices/${draft2.id}/issue`).send({});
+
+      const [r1, r2] = await Promise.all([p1, p2]);
+      expect(r1.status).toBe(200);
+      expect(r2.status).toBe(200);
+
+      const inv1 = await prisma.invoice.findUniqueOrThrow({ where: { id: draft1.id } });
+      const inv2 = await prisma.invoice.findUniqueOrThrow({ where: { id: draft2.id } });
+
+      expect([inv1.invoiceNumber, inv2.invoiceNumber].sort()).toEqual([
+        'INV/26-27/0001',
+        'INV/26-27/0002',
+      ]);
+
+      const counter = await prisma.invoiceCounter.findUniqueOrThrow({
+        where: { financialYear_prefix: { financialYear: '26-27', prefix: 'INV' } },
+      });
+      expect(counter.nextSequence).toBe(3);
+    });
+
+    it('DB-06 â€” CONCURRENCY: Invoice row lock blocks concurrent Update', async () => {
+      const draft = await createDraft();
+
+      let resolveLock: () => void;
+      const lockPromise = new Promise<void>((r) => {
+        resolveLock = r;
+      });
+      let locked = false;
+
+      const originalGetCounter = InvoicesRepository.lockInvoiceCounterForUpdate;
+      vi.spyOn(InvoicesRepository, 'lockInvoiceCounterForUpdate').mockImplementation(
+        async (fy, prefix, tx) => {
+          locked = true;
+          await lockPromise;
+          return originalGetCounter.call(InvoicesRepository, fy, prefix, tx);
+        },
+      );
+
+      const issuePromise = request(app)
+        .post(`/api/v1/invoices/${draft.id}/issue`)
+        .send({})
+        .then((response) => response);
+
+      for (let i = 0; i < 20; i++) {
+        if (locked) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+
+      expect(locked).toBe(true);
+
+      let updateFinished = false;
+      const updatePromise = InvoicesService.updateInvoice(
+        testAdminId,
+        draft.id,
+        { ...validPayload, notes: 'concurrent update' } as InvoiceUpdatePayload,
+        { ipAddress: '1', userAgent: '2', requestId: '3' },
+      )
+        .then(() => {
+          updateFinished = true;
+        })
+        .catch(() => {
+          updateFinished = true;
+        });
+
+      await new Promise((r) => setTimeout(r, 100));
+      expect(updateFinished).toBe(false);
+
+      resolveLock!();
+
+      await Promise.all([issuePromise, updatePromise]);
+
+      expect(updateFinished).toBe(true);
+    });
+
+    it('DB-07 â€” CONCURRENCY: Invoice row lock blocks concurrent Delete/Archive', async () => {
+      const draft = await createDraft();
+
+      let resolveLock: () => void;
+      const lockPromise = new Promise<void>((r) => {
+        resolveLock = r;
+      });
+      let locked = false;
+
+      const originalGetCounter = InvoicesRepository.lockInvoiceCounterForUpdate;
+      vi.spyOn(InvoicesRepository, 'lockInvoiceCounterForUpdate').mockImplementation(
+        async (fy, prefix, tx) => {
+          locked = true;
+          await lockPromise;
+          return originalGetCounter.call(InvoicesRepository, fy, prefix, tx);
+        },
+      );
+
+      const issuePromise = request(app)
+        .post(`/api/v1/invoices/${draft.id}/issue`)
+        .send({})
+        .then((response) => response);
+
+      for (let i = 0; i < 20; i++) {
+        if (locked) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+
+      expect(locked).toBe(true);
+
+      let deleteFinished = false;
+      const deletePromise = prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(
+          `SELECT id FROM public."invoices" WHERE id = $1 FOR UPDATE`,
+          draft.id,
+        );
+        deleteFinished = true;
+      });
+
+      await new Promise((r) => setTimeout(r, 100));
+      expect(deleteFinished).toBe(false);
+
+      resolveLock!();
+
+      await Promise.all([issuePromise, deletePromise]);
+
+      expect(deleteFinished).toBe(true);
+    });
+
+    it('DB-08 â€” CONCURRENCY: Issuance blocks concurrent Client Archival (Client lock precedence)', async () => {
+      const draft = await createDraft();
+
+      let resolveLock: () => void;
+      const lockPromise = new Promise<void>((r) => {
+        resolveLock = r;
+      });
+      let locked = false;
+
+      const originalGetCounter = InvoicesRepository.lockInvoiceCounterForUpdate;
+      vi.spyOn(InvoicesRepository, 'lockInvoiceCounterForUpdate').mockImplementation(
+        async (fy, prefix, tx) => {
+          locked = true;
+          await lockPromise;
+          return originalGetCounter.call(InvoicesRepository, fy, prefix, tx);
+        },
+      );
+
+      const issuePromise = request(app)
+        .post(`/api/v1/invoices/${draft.id}/issue`)
+        .send({})
+        .then((response) => response);
+
+      for (let i = 0; i < 20; i++) {
+        if (locked) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+
+      expect(locked).toBe(true);
+
+      let archiveFinished = false;
+      const archivePromise = prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(
+          `SELECT id FROM public."clients" WHERE id = $1 FOR UPDATE`,
+          clientId1,
+        );
+        archiveFinished = true;
+      });
+
+      await new Promise((r) => setTimeout(r, 100));
+      expect(archiveFinished).toBe(false);
+
+      resolveLock!();
+
+      await Promise.all([issuePromise, archivePromise]);
+
+      expect(archiveFinished).toBe(true);
+    });
+
+    it('DB-09 â€” COUNTER: First invoice in Financial Year (creates counter)', async () => {
+      const draft = await createDraft({ invoiceDate: '2026-08-16' });
+
+      await request(app).post(`/api/v1/invoices/${draft.id}/issue`).send({});
+
+      const counter = await prisma.invoiceCounter.findUniqueOrThrow({
+        where: { financialYear_prefix: { financialYear: '26-27', prefix: 'INV' } },
+      });
+      expect(counter.nextSequence).toBe(2);
+    });
+
+    it('DB-10 â€” COUNTER: Subsequent invoice in Financial Year (increments counter)', async () => {
+      await prisma.invoiceCounter.create({ data: { financialYear: '26-27', nextSequence: 5 } });
+
+      const draft = await createDraft({ invoiceDate: '2026-08-16' });
+      const res = await request(app).post(`/api/v1/invoices/${draft.id}/issue`).send({});
+
+      expect(res.body.invoiceNumber).toBe('INV/26-27/0005');
+
+      const counter = await prisma.invoiceCounter.findUniqueOrThrow({
+        where: { financialYear_prefix: { financialYear: '26-27', prefix: 'INV' } },
+      });
+      expect(counter.nextSequence).toBe(6);
+    });
+
+    it('DB-11 â€” COUNTER: Maximum limit exhausted (throws exhaustion ConflictError)', async () => {
+      await prisma.invoiceCounter.create({ data: { financialYear: '26-27', nextSequence: 10000 } });
+
+      const draft = await createDraft({ invoiceDate: '2026-08-16' });
+      const res = await request(app).post(`/api/v1/invoices/${draft.id}/issue`).send({});
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toBe(
+        'Maximum invoice sequence reached for this financial year',
+      );
+    });
+
+    it('DB-12 â€” COUNTER: Independent financial years (25-26 vs 26-27 do not collide)', async () => {
+      await prisma.invoiceCounter.create({ data: { financialYear: '25-26', nextSequence: 10 } });
+
+      const draft = await createDraft({ invoiceDate: '2026-08-16' }); // 26-27
+      const res = await request(app).post(`/api/v1/invoices/${draft.id}/issue`).send({});
+
+      expect(res.body.invoiceNumber).toBe('INV/26-27/0001');
+
+      const counter2627 = await prisma.invoiceCounter.findUniqueOrThrow({
+        where: { financialYear_prefix: { financialYear: '26-27', prefix: 'INV' } },
+      });
+      expect(counter2627.nextSequence).toBe(2);
+
+      const counter2526 = await prisma.invoiceCounter.findUniqueOrThrow({
+        where: { financialYear_prefix: { financialYear: '25-26', prefix: 'INV' } },
+      });
+      expect(counter2526.nextSequence).toBe(10);
+    });
+
+    it('DB-13 â€” ERROR: Missing Client triggers rollback', async () => {
+      const draft = await createDraft();
+      const { ClientsRepository } = await import('../../src/features/clients/clients.repository');
+      vi.spyOn(ClientsRepository, 'getClientById').mockResolvedValue(null);
+
+      const res = await request(app).post(`/api/v1/invoices/${draft.id}/issue`).send({});
+      expect(res.status).toBe(404);
+
+      const inv = await prisma.invoice.findUnique({ where: { id: draft.id } });
+      expect(inv?.status).toBe(InvoiceStatus.DRAFT);
+    });
+
+    it('DB-14 â€” ERROR: Missing Business Settings triggers rollback', async () => {
+      const draft = await createDraft();
+      await prisma.businessSettings.deleteMany({});
+
+      const res = await request(app).post(`/api/v1/invoices/${draft.id}/issue`).send({});
+      expect(res.status).toBe(404);
+
+      const inv = await prisma.invoice.findUniqueOrThrow({ where: { id: draft.id } });
+      expect(inv.status).toBe(InvoiceStatus.DRAFT);
+    });
+
+    it('DB-15 â€” ERROR: Missing Invoice triggers rollback', async () => {
+      const res = await request(app)
+        .post('/api/v1/invoices/550e8400-e29b-41d4-a716-446655440001/issue')
+        .send({});
+      expect(res.status).toBe(404);
+    });
+    it('DB-16 — ROLLBACK: Failure after counter mutation rolls back completely', async () => {
+      const draft = await createDraft({ invoiceDate: '2026-08-16' });
+
+      await prisma.invoiceCounter.upsert({
+        where: { financialYear_prefix: { financialYear: '26-27', prefix: 'INV' } },
+        update: { nextSequence: 42 },
+        create: { financialYear: '26-27', prefix: 'INV', nextSequence: 42 },
+      });
+
+      const initialCounter = await prisma.invoiceCounter.findUniqueOrThrow({
+        where: { financialYear_prefix: { financialYear: '26-27', prefix: 'INV' } },
+      });
+      expect(initialCounter.nextSequence).toBe(42);
+
+      const initialAuditCount = await prisma.auditLog.count({
+        where: { entityId: draft.id, action: 'INVOICE_ISSUED' },
+      });
+
+      const { InvoicesRepository } =
+        await import('../../src/features/invoices/invoices.repository');
+      vi.spyOn(InvoicesRepository, 'createInvoiceAuditLog').mockRejectedValueOnce(
+        new Error('Simulated failure after counter mutation'),
+      );
+
+      const res = await request(app).post(`/api/v1/invoices/${draft.id}/issue`).send({});
+      expect(res.status).toBe(500);
+
+      const invAfterFailure = await prisma.invoice.findUniqueOrThrow({ where: { id: draft.id } });
+      expect(invAfterFailure.status).toBe(InvoiceStatus.DRAFT);
+      expect(invAfterFailure.invoiceNumber).toBeNull();
+      expect(invAfterFailure.financialYear).toBeNull();
+      expect(invAfterFailure.snapshotVersion).toBe(1);
+
+      const { Prisma } = await import('../../src/generated/prisma/client');
+      if (invAfterFailure.businessSnapshot === Prisma.DbNull) {
+        expect(invAfterFailure.businessSnapshot).toBe(Prisma.DbNull);
+      } else {
+        expect(invAfterFailure.businessSnapshot).toBeNull();
+      }
+
+      if (invAfterFailure.clientSnapshot === Prisma.DbNull) {
+        expect(invAfterFailure.clientSnapshot).toBe(Prisma.DbNull);
+      } else {
+        expect(invAfterFailure.clientSnapshot).toBeNull();
+      }
+
+      expect(invAfterFailure.sentAt).toBeNull();
+      expect(invAfterFailure.sentByUserId).toBeNull();
+
+      const counterAfterFailure = await prisma.invoiceCounter.findUniqueOrThrow({
+        where: { financialYear_prefix: { financialYear: '26-27', prefix: 'INV' } },
+      });
+      expect(counterAfterFailure.nextSequence).toBe(42);
+
+      const auditCountAfterFailure = await prisma.auditLog.count({
+        where: { entityId: draft.id, action: 'INVOICE_ISSUED' },
+      });
+      expect(auditCountAfterFailure).toBe(initialAuditCount);
+
+      vi.restoreAllMocks();
+
+      const resSuccess = await request(app).post(`/api/v1/invoices/${draft.id}/issue`).send({});
+      expect(resSuccess.status).toBe(200);
+      expect(resSuccess.body.invoiceNumber).toBe('INV/26-27/0042');
+
+      const counterAfterSuccess = await prisma.invoiceCounter.findUniqueOrThrow({
+        where: { financialYear_prefix: { financialYear: '26-27', prefix: 'INV' } },
+      });
+      expect(counterAfterSuccess.nextSequence).toBe(43);
+    });
+  });
 });

@@ -1881,4 +1881,397 @@ describe('updateInvoice', () => {
       expect(InvoicesRepository.getInvoiceWithItems).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe('issueInvoice', () => {
+    const auditContext = { requestId: 'req-1', ipAddress: '127.0.0.1', userAgent: 'test-agent' };
+    let existing: Prisma.InvoiceGetPayload<{ include: { items: true } }>;
+    let mockSettings: Prisma.BusinessSettingsGetPayload<Record<string, never>>;
+    let mockClient: Prisma.ClientGetPayload<Record<string, never>>;
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      existing = makeDraftInvoice();
+      mockSettings = makeBusinessSettings();
+      mockClient = makeClient();
+
+      vi.mocked(businessSettingsRepo.acquireSingletonLock).mockResolvedValue(undefined);
+      vi.mocked(InvoicesRepository.lockInvoiceForUpdate).mockResolvedValue(undefined);
+      vi.mocked(InvoicesRepository.getInvoiceWithItems).mockResolvedValue(existing as never);
+      vi.mocked(ClientsRepository.lockClientForLifecycle).mockResolvedValue(undefined);
+      vi.mocked(ClientsRepository.getClientById).mockResolvedValue(mockClient as never);
+      vi.mocked(businessSettingsRepo.getBusinessSettings).mockResolvedValue(mockSettings as never);
+      vi.mocked(InvoicesRepository.safelyEstablishInvoiceCounter).mockResolvedValue(undefined);
+      vi.mocked(InvoicesRepository.lockInvoiceCounterForUpdate).mockResolvedValue({
+        id: 'c-1',
+        financialYear: '2026-27',
+        prefix: 'INV',
+        nextSequence: 1,
+      } as never);
+      vi.mocked(InvoicesRepository.incrementInvoiceCounter).mockResolvedValue(undefined as never);
+      vi.mocked(InvoicesRepository.updateInvoice).mockResolvedValue(undefined as never);
+      vi.mocked(InvoicesRepository.createInvoiceAuditLog).mockResolvedValue(undefined as never);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('A. successful DRAFT issuance', async () => {
+      await expect(
+        InvoicesService.issueInvoice('u-1', 'inv-1', auditContext),
+      ).resolves.toBeDefined();
+      expect(InvoicesRepository.updateInvoice).toHaveBeenCalled();
+    });
+
+    it('B. BusinessSettings advisory lock occurs first', async () => {
+      const callOrder: string[] = [];
+      vi.mocked(businessSettingsRepo.acquireSingletonLock).mockImplementation(async () => {
+        callOrder.push('settingsLock');
+      });
+      vi.mocked(InvoicesRepository.lockInvoiceForUpdate).mockImplementation(async () => {
+        callOrder.push('invoiceLock');
+      });
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      expect(callOrder[0]).toBe('settingsLock');
+      expect(callOrder[1]).toBe('invoiceLock');
+    });
+
+    it('C. Invoice is locked FOR UPDATE', async () => {
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      expect(InvoicesRepository.lockInvoiceForUpdate).toHaveBeenCalledWith(
+        'inv-1',
+        expect.anything(),
+      );
+    });
+
+    it('D. locked Invoice is re-read', async () => {
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      expect(InvoicesRepository.getInvoiceWithItems).toHaveBeenCalledWith(
+        'inv-1',
+        expect.anything(),
+      );
+    });
+
+    it('E. already-SENT invoice returns existing issued invoice', async () => {
+      existing.status = InvoiceStatus.SENT;
+      const res = await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      expect(res.id).toBe(existing.id);
+    });
+
+    it('F. already-SENT does NOT mutate state', async () => {
+      existing.status = InvoiceStatus.SENT;
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      expect(InvoicesRepository.safelyEstablishInvoiceCounter).not.toHaveBeenCalled();
+      expect(InvoicesRepository.incrementInvoiceCounter).not.toHaveBeenCalled();
+      expect(InvoicesRepository.updateInvoice).not.toHaveBeenCalled();
+      expect(InvoicesRepository.createInvoiceAuditLog).not.toHaveBeenCalled();
+    });
+
+    it('G. PARTIALLY_PAID invalid -> 409', async () => {
+      existing.status = InvoiceStatus.PARTIALLY_PAID;
+      await expect(InvoicesService.issueInvoice('u-1', 'inv-1', auditContext)).rejects.toThrowError(
+        ConflictError,
+      );
+    });
+
+    it('H. PAID invalid -> 409', async () => {
+      existing.status = InvoiceStatus.PAID;
+      await expect(InvoicesService.issueInvoice('u-1', 'inv-1', auditContext)).rejects.toThrowError(
+        ConflictError,
+      );
+    });
+
+    it('I. CANCELLED invalid -> 409', async () => {
+      existing.status = InvoiceStatus.CANCELLED;
+      await expect(InvoicesService.issueInvoice('u-1', 'inv-1', auditContext)).rejects.toThrowError(
+        ConflictError,
+      );
+    });
+
+    it('J. missing Invoice -> 404', async () => {
+      vi.mocked(InvoicesRepository.getInvoiceWithItems).mockResolvedValueOnce(null);
+      await expect(InvoicesService.issueInvoice('u-1', 'inv-1', auditContext)).rejects.toThrowError(
+        NotFoundError,
+      );
+    });
+
+    it('K. missing BusinessSettings controlled error', async () => {
+      vi.mocked(businessSettingsRepo.getBusinessSettings).mockResolvedValueOnce(null);
+      await expect(InvoicesService.issueInvoice('u-1', 'inv-1', auditContext)).rejects.toThrowError(
+        NotFoundError,
+      );
+    });
+
+    it('L. Client is locked', async () => {
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      expect(ClientsRepository.lockClientForLifecycle).toHaveBeenCalledWith(
+        existing.clientId,
+        expect.anything(),
+      );
+    });
+
+    it('M. missing Client controlled error', async () => {
+      vi.mocked(ClientsRepository.getClientById).mockResolvedValueOnce(null);
+      await expect(InvoicesService.issueInvoice('u-1', 'inv-1', auditContext)).rejects.toThrowError(
+        NotFoundError,
+      );
+    });
+
+    it('N. archived Client -> 409', async () => {
+      mockClient.isArchived = true;
+      await expect(InvoicesService.issueInvoice('u-1', 'inv-1', auditContext)).rejects.toThrowError(
+        ConflictError,
+      );
+    });
+
+    it('O. archived Client causes NO counter allocation', async () => {
+      mockClient.isArchived = true;
+      await expect(InvoicesService.issueInvoice('u-1', 'inv-1', auditContext)).rejects.toThrowError(
+        ConflictError,
+      );
+      expect(InvoicesRepository.safelyEstablishInvoiceCounter).not.toHaveBeenCalled();
+      expect(InvoicesRepository.incrementInvoiceCounter).not.toHaveBeenCalled();
+    });
+
+    it('P. FY derived from invoiceDate', async () => {
+      existing.invoiceDate = new Date('2026-03-31T10:00:00Z');
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      expect(InvoicesRepository.safelyEstablishInvoiceCounter).toHaveBeenCalledWith(
+        '25-26',
+        expect.anything(),
+        expect.anything(),
+      );
+    });
+
+    it('Q. prefix sourced from BusinessSettings.invoicePrefix', async () => {
+      mockSettings.invoicePrefix = 'ABC';
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      expect(InvoicesRepository.safelyEstablishInvoiceCounter).toHaveBeenCalledWith(
+        '26-27',
+        'ABC',
+        expect.anything(),
+      );
+    });
+
+    it('R. counter row established before row-lock/read', async () => {
+      const callOrder: string[] = [];
+      vi.mocked(InvoicesRepository.safelyEstablishInvoiceCounter).mockImplementation(async () => {
+        callOrder.push('establish');
+      });
+      vi.mocked(InvoicesRepository.lockInvoiceCounterForUpdate).mockImplementation(async () => {
+        callOrder.push('lock');
+        return { id: 'c-1', financialYear: '26-27', prefix: 'INV', nextSequence: 1 } as never;
+      });
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      expect(callOrder).toEqual(['establish', 'lock']);
+    });
+
+    it('S. nextSequence = 1 -> 0001', async () => {
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      const updateCall = vi.mocked(InvoicesRepository.updateInvoice).mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(updateCall.invoiceNumber).toBe('INV/26-27/0001');
+    });
+
+    it('T. nextSequence = 9999 -> 9999 and becomes 10000', async () => {
+      vi.mocked(InvoicesRepository.lockInvoiceCounterForUpdate).mockResolvedValueOnce({
+        id: 'c-1',
+        financialYear: '26-27',
+        prefix: 'INV',
+        nextSequence: 9999,
+      } as never);
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      const updateCall = vi.mocked(InvoicesRepository.updateInvoice).mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(updateCall.invoiceNumber).toBe('INV/26-27/9999');
+      expect(InvoicesRepository.incrementInvoiceCounter).toHaveBeenCalled();
+    });
+
+    it('U. nextSequence = 10000 -> controlled conflict', async () => {
+      vi.mocked(InvoicesRepository.lockInvoiceCounterForUpdate).mockResolvedValueOnce({
+        id: 'c-1',
+        financialYear: '26-27',
+        prefix: 'INV',
+        nextSequence: 10000,
+      } as never);
+      await expect(InvoicesService.issueInvoice('u-1', 'inv-1', auditContext)).rejects.toThrowError(
+        ConflictError,
+      );
+    });
+
+    it('V. snapshotVersion = 1', async () => {
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      const updateCall = vi.mocked(InvoicesRepository.updateInvoice).mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(updateCall.snapshotVersion).toBe(1);
+    });
+
+    it('W. exact business snapshot passed', async () => {
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      const updateCall = vi.mocked(InvoicesRepository.updateInvoice).mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(updateCall.businessSnapshot).toBeDefined();
+      expect((updateCall.businessSnapshot as { gstin?: string | null }).gstin).toBe(
+        mockSettings.gstin,
+      );
+    });
+
+    it('X. exact client snapshot passed', async () => {
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      const updateCall = vi.mocked(InvoicesRepository.updateInvoice).mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(updateCall.clientSnapshot).toBeDefined();
+      expect((updateCall.clientSnapshot as { name?: string }).name).toBe(mockClient.name);
+    });
+
+    it('Y. status becomes SENT', async () => {
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      const updateCall = vi.mocked(InvoicesRepository.updateInvoice).mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(updateCall.status).toBe(InvoiceStatus.SENT);
+    });
+
+    it('Z. authenticated actor becomes sentByUserId', async () => {
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      const updateCall = vi.mocked(InvoicesRepository.updateInvoice).mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(updateCall.sentByUserId).toBe('u-1');
+    });
+
+    it('AA. sentAt populated by server', async () => {
+      vi.useFakeTimers();
+      const now = new Date('2026-08-16T10:00:00Z');
+      vi.setSystemTime(now);
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      const updateCall = vi.mocked(InvoicesRepository.updateInvoice).mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(updateCall.sentAt).toEqual(now);
+    });
+
+    it('AB. INVOICE_ISSUED audit exactly once', async () => {
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      expect(InvoicesRepository.createInvoiceAuditLog).toHaveBeenCalledTimes(1);
+      const auditCall = vi.mocked(InvoicesRepository.createInvoiceAuditLog).mock.calls[0][0];
+      expect(auditCall.action).toBe('INVOICE_ISSUED');
+    });
+
+    it('AC. audit metadata contains only safe minimal fields', async () => {
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      const auditCall = vi.mocked(InvoicesRepository.createInvoiceAuditLog).mock.calls[0][0];
+      expect(auditCall.metadata).toEqual({
+        invoiceNumber: 'INV/26-27/0001',
+        financialYear: '26-27',
+      });
+    });
+
+    it('AD. no GST/totals recalculation during issuance', async () => {
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      const updateCall = vi.mocked(InvoicesRepository.updateInvoice).mock.calls[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(updateCall.subtotal).toBeUndefined();
+      expect(updateCall.total).toBeUndefined();
+    });
+
+    it('AE. transaction failure propagates and does not falsely return success', async () => {
+      vi.mocked(InvoicesRepository.updateInvoice).mockRejectedValueOnce(new Error('DB Error'));
+      await expect(InvoicesService.issueInvoice('u-1', 'inv-1', auditContext)).rejects.toThrowError(
+        'DB Error',
+      );
+    });
+
+    it('AF. all persistence calls use the same tx', async () => {
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+      const tx1 = vi.mocked(InvoicesRepository.safelyEstablishInvoiceCounter).mock.calls[0][2];
+      const tx2 = vi.mocked(InvoicesRepository.lockInvoiceCounterForUpdate).mock.calls[0][2];
+      const tx3 = vi.mocked(InvoicesRepository.incrementInvoiceCounter).mock.calls[0][1];
+      const tx4 = vi.mocked(InvoicesRepository.updateInvoice).mock.calls[0][2];
+      const tx5 = vi.mocked(InvoicesRepository.createInvoiceAuditLog).mock.calls[0][1];
+      expect(tx1).toBe(tx2);
+      expect(tx2).toBe(tx3);
+      expect(tx3).toBe(tx4);
+      expect(tx4).toBe(tx5);
+    });
+
+    it('AG. exact ordering', async () => {
+      const callOrder: string[] = [];
+      vi.mocked(businessSettingsRepo.acquireSingletonLock).mockImplementation(async () => {
+        callOrder.push('settingsLock');
+      });
+      vi.mocked(InvoicesRepository.lockInvoiceForUpdate).mockImplementation(async () => {
+        callOrder.push('invoiceLock');
+      });
+      vi.mocked(InvoicesRepository.getInvoiceWithItems).mockImplementation(async () => {
+        callOrder.push('invoiceGet');
+        return existing as never;
+      });
+      vi.mocked(ClientsRepository.lockClientForLifecycle).mockImplementation(async () => {
+        callOrder.push('clientLock');
+      });
+      vi.mocked(ClientsRepository.getClientById).mockImplementation(async () => {
+        callOrder.push('clientGet');
+        return mockClient as never;
+      });
+      vi.mocked(InvoicesRepository.safelyEstablishInvoiceCounter).mockImplementation(async () => {
+        callOrder.push('counterEstablish');
+      });
+      vi.mocked(InvoicesRepository.lockInvoiceCounterForUpdate).mockImplementation(async () => {
+        callOrder.push('counterLock');
+        return { id: 'c-1', financialYear: '2026-27', prefix: 'INV', nextSequence: 1 } as never;
+      });
+      vi.mocked(InvoicesRepository.incrementInvoiceCounter).mockImplementation(async () => {
+        callOrder.push('counterUpdate');
+        return undefined as never;
+      });
+      vi.mocked(InvoicesRepository.updateInvoice).mockImplementation(async () => {
+        callOrder.push('invoiceUpdate');
+        return undefined as never;
+      });
+      vi.mocked(InvoicesRepository.createInvoiceAuditLog).mockImplementation(async () => {
+        callOrder.push('audit');
+        return undefined as never;
+      });
+
+      await InvoicesService.issueInvoice('u-1', 'inv-1', auditContext);
+
+      const expectedOrder = [
+        'settingsLock',
+        'invoiceLock',
+        'invoiceGet',
+        'clientLock',
+        'clientGet',
+        'counterEstablish',
+        'counterLock',
+        'counterUpdate',
+        'invoiceUpdate',
+        'audit',
+      ];
+
+      const filteredOrder = callOrder.filter((c) => expectedOrder.includes(c));
+
+      let currentIdx = 0;
+      for (const step of expectedOrder) {
+        const foundIdx = filteredOrder.indexOf(step, currentIdx);
+        expect(foundIdx).toBeGreaterThanOrEqual(currentIdx);
+        currentIdx = foundIdx + 1;
+      }
+    });
+  });
 });

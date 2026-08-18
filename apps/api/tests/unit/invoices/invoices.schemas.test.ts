@@ -5,6 +5,7 @@ import {
   invoiceIdParamSchema,
   invoiceListQuerySchema,
   invoiceUpdateSchema,
+  invoiceIssueSchema,
 } from '../../../src/features/invoices/invoices.schemas';
 
 // Using strings for status enum to avoid unresolved module imports in this mock environment
@@ -1027,6 +1028,54 @@ describe('Invoices Schemas', () => {
       payload.invoiceDate = '2026-08-16';
       payload.dueDate = '2026-08-15';
       expect(invoiceUpdateSchema.safeParse(payload).success).toBe(true);
+    });
+  });
+
+  describe('invoiceIssueSchema', () => {
+    it('S-01 valid empty body succeeds', () => {
+      expect(invoiceIssueSchema.safeParse({}).success).toBe(true);
+    });
+
+    it('S-03 invoiceNumber mass assignment fails', () => {
+      expect(invoiceIssueSchema.safeParse({ invoiceNumber: 'INV/25-26/0001' }).success).toBe(false);
+    });
+
+    it('S-04 financialYear mass assignment fails', () => {
+      expect(invoiceIssueSchema.safeParse({ financialYear: '25-26' }).success).toBe(false);
+    });
+
+    it('S-05 status mass assignment fails', () => {
+      expect(invoiceIssueSchema.safeParse({ status: 'SENT' }).success).toBe(false);
+    });
+
+    it('S-06 businessSnapshot mass assignment fails', () => {
+      expect(invoiceIssueSchema.safeParse({ businessSnapshot: {} }).success).toBe(false);
+    });
+
+    it('S-07 clientSnapshot mass assignment fails', () => {
+      expect(invoiceIssueSchema.safeParse({ clientSnapshot: {} }).success).toBe(false);
+    });
+
+    it('S-08 snapshotVersion mass assignment fails', () => {
+      expect(invoiceIssueSchema.safeParse({ snapshotVersion: 1 }).success).toBe(false);
+    });
+
+    it('S-09 sentAt mass assignment fails', () => {
+      expect(invoiceIssueSchema.safeParse({ sentAt: new Date().toISOString() }).success).toBe(
+        false,
+      );
+    });
+
+    it('S-10 sentByUserId mass assignment fails', () => {
+      expect(invoiceIssueSchema.safeParse({ sentByUserId: VALID_UUID }).success).toBe(false);
+    });
+
+    it('S-11 recipient mass assignment fails', () => {
+      expect(invoiceIssueSchema.safeParse({ recipient: 'client@example.com' }).success).toBe(false);
+    });
+
+    it('S-12 arbitrary unknown field fails', () => {
+      expect(invoiceIssueSchema.safeParse({ unknownField: 'foo' }).success).toBe(false);
     });
   });
 });

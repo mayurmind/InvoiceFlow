@@ -129,6 +129,32 @@ export class InvoicesRepository {
     return where;
   }
 
+  static async safelyEstablishInvoiceCounter(financialYear: string, prefix: string, tx: ITXClient) {
+    await tx.$executeRaw`
+      INSERT INTO "invoice_counters" ("id", "financialYear", "prefix", "nextSequence", "createdAt", "updatedAt")
+      VALUES (gen_random_uuid(), ${financialYear}, ${prefix}, 1, NOW(), NOW())
+      ON CONFLICT ("financialYear", "prefix") DO NOTHING
+    `;
+  }
+
+  static async lockInvoiceCounterForUpdate(financialYear: string, prefix: string, tx: ITXClient) {
+    const rows = await tx.$queryRaw<Array<{ id: string; nextSequence: number }>>`
+      SELECT "id", "nextSequence"
+      FROM "invoice_counters"
+      WHERE "financialYear" = ${financialYear} AND "prefix" = ${prefix}
+      FOR UPDATE
+    `;
+    return rows[0] || null;
+  }
+
+  static async incrementInvoiceCounter(id: string, tx: ITXClient) {
+    await tx.$executeRaw`
+      UPDATE "invoice_counters"
+      SET "nextSequence" = "nextSequence" + 1, "updatedAt" = NOW()
+      WHERE "id" = ${id}::uuid
+    `;
+  }
+
   static async createInvoiceAuditLog(
     data: {
       actorUserId: string;

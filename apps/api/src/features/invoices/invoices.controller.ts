@@ -69,4 +69,23 @@ export class InvoicesController {
       next(error);
     }
   }
+
+  static async issueInvoice(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.auth || !req.auth.user) {
+        throw new UnauthorizedError('Authentication required');
+      }
+      const { invoiceId } = req.params;
+
+      const invoice = await InvoicesService.issueInvoice(req.auth.user.id, invoiceId, {
+        requestId: req.id as string,
+        ipAddress: req.ip || 'unknown',
+        userAgent: req.headers['user-agent'] || 'unknown',
+      });
+
+      res.json(invoice);
+    } catch (error) {
+      next(error);
+    }
+  }
 }

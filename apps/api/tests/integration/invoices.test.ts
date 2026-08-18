@@ -9,6 +9,7 @@ vi.mock('../../src/features/invoices/invoices.service', () => {
       listInvoices: vi.fn(),
       getInvoiceById: vi.fn(),
       updateInvoice: vi.fn(),
+      issueInvoice: vi.fn(),
     },
   };
 });
@@ -120,6 +121,17 @@ describe('Invoices Integration - HTTP & Validation Layer', () => {
     });
     vi.mocked(InvoicesService.getInvoiceById).mockResolvedValue(expectedResponse as never);
     vi.mocked(InvoicesService.updateInvoice).mockResolvedValue(expectedResponse);
+    vi.mocked(InvoicesService.issueInvoice).mockResolvedValue({
+      ...expectedResponse,
+      status: 'SENT',
+      invoiceNumber: 'INV/26-27/0001',
+      financialYear: '26-27',
+      snapshotVersion: 1,
+      businessSnapshot: { gstin: '27AAAAA0000A1Z5' },
+      clientSnapshot: { name: 'Acme Corp' },
+      sentAt: new Date().toISOString(),
+      sentByUserId: 'mock-user-id',
+    } as never);
   });
 
   describe('POST /api/v1/invoices', () => {
@@ -718,6 +730,292 @@ describe('Invoices Integration - HTTP & Validation Layer', () => {
         .send(validPayload);
       expect(res.status).toBe(200);
       expect(InvoicesService.updateInvoice).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('POST /api/v1/invoices/:invoiceId/issue', () => {
+    const validId = '550e8400-e29b-41d4-a716-446655440001';
+
+    it('HTTP-01 — SUPER_ADMIN SUCCESS', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res.status).toBe(200);
+      expect(InvoicesService.issueInvoice).toHaveBeenCalledTimes(1);
+    });
+
+    it('HTTP-02 — STAFF SUCCESS', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.STAFF)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res.status).toBe(200);
+    });
+
+    it('HTTP-03 — VIEWER FORBIDDEN', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.VIEWER)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res.status).toBe(403);
+      expect(InvoicesService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('HTTP-04 — UNAUTHENTICATED', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-auth', 'none')
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res.status).toBe(401);
+    });
+
+    it('HTTP-05 — PASSWORD CHANGE REQUIRED', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-mock-must-change-password', 'true')
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res.status).toBe(403);
+      expect(InvoicesService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('HTTP-06 — UNTRUSTED ORIGIN', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'false')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res.status).toBe(401);
+      expect(InvoicesService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('HTTP-07 — MISSING CSRF', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'false') // Simulate missing/invalid CSRF rejection by mock
+        .send({});
+
+      expect(res.status).toBe(401);
+    });
+
+    it('HTTP-08 — INVALID CSRF', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'false')
+        .send({});
+
+      expect(res.status).toBe(401);
+    });
+
+    it('HTTP-09 — MALFORMED UUID', async () => {
+      const res = await request(app)
+        .post('/api/v1/invoices/not-a-uuid/issue')
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(InvoicesService.issueInvoice).not.toHaveBeenCalled();
+    });
+
+    it('HTTP-10 — NON-EMPTY BODY', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({ foo: 'bar' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('HTTP-11 — INVOICE NUMBER MASS ASSIGNMENT', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({ invoiceNumber: 'FAKE/99-00/9999' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('HTTP-12 — FINANCIAL YEAR MASS ASSIGNMENT', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({ financialYear: '99-00' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('HTTP-13 — STATUS MASS ASSIGNMENT', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({ status: 'SENT' });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('HTTP-14 — SNAPSHOT MASS ASSIGNMENT', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({ businessSnapshot: {} });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('HTTP-15 — SENT OWNERSHIP MASS ASSIGNMENT', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({ sentAt: new Date().toISOString() });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('HTTP-16 — MISSING INVOICE', async () => {
+      vi.mocked(InvoicesService.issueInvoice).mockRejectedValueOnce(
+        new NotFoundError('Invoice not found'),
+      );
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res.status).toBe(404);
+    });
+
+    it('HTTP-17 — ARCHIVED CLIENT', async () => {
+      vi.mocked(InvoicesService.issueInvoice).mockRejectedValueOnce(
+        new ConflictError('Cannot issue invoice for an archived client'),
+      );
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res.status).toBe(409);
+    });
+
+    it('HTTP-18 — COUNTER EXHAUSTED', async () => {
+      vi.mocked(InvoicesService.issueInvoice).mockRejectedValueOnce(
+        new ConflictError('Maximum invoice sequence reached for this financial year'),
+      );
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res.status).toBe(409);
+    });
+
+    it('HTTP-19 — SUCCESS RESPONSE STATUS', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('SENT');
+    });
+
+    it('HTTP-20 — FINAL NUMBER RESPONSE', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res.body.invoiceNumber).toBe('INV/26-27/0001');
+    });
+
+    it('HTTP-21 — FINANCIAL YEAR RESPONSE', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res.body.financialYear).toBe('26-27');
+    });
+
+    it('HTTP-22 — SNAPSHOT RESPONSE', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res.body.snapshotVersion).toBe(1);
+      expect(res.body.businessSnapshot).toBeDefined();
+      expect(res.body.clientSnapshot).toBeDefined();
+    });
+
+    it('HTTP-23 — IDEMPOTENT REPEAT', async () => {
+      const res = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res.status).toBe(200);
+      expect(res.body.invoiceNumber).toBe('INV/26-27/0001');
+
+      const res2 = await request(app)
+        .post(`/api/v1/invoices/${validId}/issue`)
+        .set('x-mock-role', UserRole.SUPER_ADMIN)
+        .set('x-origin-verified', 'true')
+        .set('x-csrf-verified', 'true')
+        .send({});
+
+      expect(res2.status).toBe(200);
+      expect(res2.body.invoiceNumber).toBe('INV/26-27/0001');
     });
   });
 });

@@ -16,6 +16,8 @@ import {
 import { parseQuantity, parseMoney } from './domain/decimal';
 import { calculateInvoiceItem, calculateInvoiceTotals } from './domain/calculation';
 import { InvoiceCalculationError } from './domain/types';
+import { createBusinessSnapshotV1, createClientSnapshotV1 } from './domain/snapshots';
+import { getFinancialYear } from './utils/financial-year.util';
 import { InvoiceStatus, Prisma } from '../../generated/prisma/client';
 
 export class InvoicesService {
@@ -487,6 +489,95 @@ export class InvoicesService {
         }
         throw error;
       }
+    });
+  }
+
+  static async issueInvoice(
+    actorUserId: string,
+    invoiceId: string,
+    auditContext: { requestId: string; ipAddress: string; userAgent: string },
+  ): Promise<InvoiceDetailResponse> {
+    const boundIp = auditContext.ipAddress.substring(0, 64);
+    const boundUa = auditContext.userAgent.substring(0, 500);
+
+    return await runInTransaction(async (tx) => {
+      await businessSettingsRepo.acquireSingletonLock(tx);
+
+      await InvoicesRepository.lockInvoiceForUpdate(invoiceId, tx);
+      const invoice = await InvoicesRepository.getInvoiceWithItems(invoiceId, tx);
+      if (!invoice) throw new NotFoundError('Invoice not found');
+
+      if (invoice.status === InvoiceStatus.SENT) {
+        return mapInvoiceToDetailResponse(invoice);
+      }
+      if (invoice.status !== InvoiceStatus.DRAFT) {
+        throw new ConflictError('Only DRAFT invoices can be issued');
+      }
+
+      await ClientsRepository.lockClientForLifecycle(invoice.clientId, tx);
+      const client = await ClientsRepository.getClientById(invoice.clientId, tx);
+      if (!client) throw new NotFoundError('Client not found');
+      if (client.isArchived) {
+        throw new ConflictError('Cannot issue invoice for an archived client');
+      }
+
+      const settings = await businessSettingsRepo.getBusinessSettings(tx);
+      if (!settings) throw new NotFoundError('Business settings are not configured');
+
+      const businessSnapshot = createBusinessSnapshotV1(settings);
+      const clientSnapshot = createClientSnapshotV1(client);
+
+      const financialYear = getFinancialYear(invoice.invoiceDate);
+      const prefix = settings.invoicePrefix || 'INV';
+
+      await InvoicesRepository.safelyEstablishInvoiceCounter(financialYear, prefix, tx);
+      const counter = await InvoicesRepository.lockInvoiceCounterForUpdate(
+        financialYear,
+        prefix,
+        tx,
+      );
+      if (!counter) throw new Error('Failed to lock invoice counter');
+
+      const nextSequence = counter.nextSequence;
+      if (nextSequence > 9999) {
+        throw new ConflictError('Maximum invoice sequence reached for this financial year');
+      }
+      await InvoicesRepository.incrementInvoiceCounter(counter.id, tx);
+
+      const sequenceStr = nextSequence.toString().padStart(4, '0');
+      const invoiceNumber = `${prefix}/${financialYear}/${sequenceStr}`;
+
+      await InvoicesRepository.updateInvoice(
+        invoice.id,
+        {
+          status: InvoiceStatus.SENT,
+          invoiceNumber,
+          financialYear,
+          snapshotVersion: 1,
+          businessSnapshot: { ...businessSnapshot },
+          clientSnapshot: { ...clientSnapshot },
+          sentAt: new Date(),
+          sentByUserId: actorUserId,
+        },
+        tx,
+      );
+
+      await InvoicesRepository.createInvoiceAuditLog(
+        {
+          actorUserId,
+          action: 'INVOICE_ISSUED',
+          entityId: invoice.id,
+          requestId: auditContext.requestId,
+          ipAddress: boundIp,
+          userAgent: boundUa,
+          metadata: { invoiceNumber, financialYear },
+        },
+        tx,
+      );
+
+      const refetched = await InvoicesRepository.getInvoiceWithItems(invoice.id, tx);
+      if (!refetched) throw new Error('Refetch failed');
+      return mapInvoiceToDetailResponse(refetched);
     });
   }
 }

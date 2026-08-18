@@ -11,6 +11,7 @@ import {
   invoiceUpdateSchema,
   invoiceListQuerySchema,
   invoiceIdParamSchema,
+  invoiceIssueSchema,
 } from './invoices.schemas';
 
 const router = Router();
@@ -53,6 +54,17 @@ router.put(
   requireCsrfToken,
   validateRequest({ params: invoiceIdParamSchema, body: invoiceUpdateSchema }),
   InvoicesController.updateInvoice,
+);
+
+router.post(
+  '/:invoiceId/issue',
+  originGuard,
+  authenticateRequest,
+  requirePasswordChangeCompleted,
+  requireRoles(UserRole.SUPER_ADMIN, UserRole.STAFF),
+  requireCsrfToken,
+  validateRequest({ params: invoiceIdParamSchema, body: invoiceIssueSchema }),
+  InvoicesController.issueInvoice,
 );
 
 export { router as invoicesRouter };
