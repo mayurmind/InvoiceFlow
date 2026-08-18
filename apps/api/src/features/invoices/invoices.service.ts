@@ -357,6 +357,7 @@ export class InvoicesService {
           parsedQuantity: Prisma.Decimal;
           parsedRate: Prisma.Decimal;
           calculated: {
+            lineGross: Prisma.Decimal;
             discountAmount: Prisma.Decimal;
             taxableAmount: Prisma.Decimal;
             gstRate: Prisma.Decimal;
@@ -491,7 +492,7 @@ export class InvoicesService {
 }
 
 function areItemsSemanticallyDifferent(
-  existingItems: Prisma.InvoiceItemGetPayload<{}>[],
+  existingItems: Prisma.InvoiceItemGetPayload<Record<string, never>>[],
   payloadItems: InvoiceUpdatePayload['items'],
 ): boolean {
   if (existingItems.length !== payloadItems.length) return true;
@@ -502,7 +503,8 @@ function areItemsSemanticallyDifferent(
     if (e.sacCode !== p.sacCode) return true;
     if (e.quantity.toFixed(3) !== parseQuantity(p.quantity).toFixed(3)) return true;
     if (e.rate.toFixed(2) !== parseMoney(p.rate).toFixed(2)) return true;
-    if (e.discountAmount.toFixed(2) !== parseMoney(p.discountAmount).toFixed(2)) return true;
+    if (e.discountAmount.toFixed(2) !== parseMoney(p.discountAmount ?? '0.00').toFixed(2))
+      return true;
     if (e.gstRate.toFixed(2) !== parseMoney(p.gstRate).toFixed(2)) return true;
   }
   return false;
