@@ -48,16 +48,27 @@ describe('P5.4 DB: Persistence, Locking, Concurrency', () => {
   const cleanup = async () => {
     if (clientId1 && clientId2) {
       await prisma.$executeRaw`ALTER TABLE public."audit_logs" DISABLE TRIGGER USER`;
-      await prisma.auditLog.deleteMany({ where: { actorUserId: testAdminId } });
-      await prisma.$executeRaw`ALTER TABLE public."audit_logs" ENABLE TRIGGER USER`;
+      try {
+        await prisma.auditLog.deleteMany({ where: { actorUserId: testAdminId } });
+      } finally {
+        await prisma.$executeRaw`ALTER TABLE public."audit_logs" ENABLE TRIGGER USER`;
+      }
+
       await prisma.$executeRaw`ALTER TABLE public."invoices" DISABLE TRIGGER USER`;
       await prisma.$executeRaw`ALTER TABLE public."invoice_items" DISABLE TRIGGER USER`;
-      await prisma.invoiceItem.deleteMany({
-        where: { invoice: { clientId: { in: [clientId1, clientId2] } } },
-      });
-      await prisma.invoice.deleteMany({ where: { clientId: { in: [clientId1, clientId2] } } });
-      await prisma.$executeRaw`ALTER TABLE public."invoice_items" ENABLE TRIGGER USER`;
-      await prisma.$executeRaw`ALTER TABLE public."invoices" ENABLE TRIGGER USER`;
+      try {
+        await prisma.invoiceItem.deleteMany({
+          where: { invoice: { clientId: { in: [clientId1, clientId2] } } },
+        });
+        await prisma.invoice.deleteMany({ where: { clientId: { in: [clientId1, clientId2] } } });
+      } finally {
+        try {
+          await prisma.$executeRaw`ALTER TABLE public."invoice_items" ENABLE TRIGGER USER`;
+        } finally {
+          await prisma.$executeRaw`ALTER TABLE public."invoices" ENABLE TRIGGER USER`;
+        }
+      }
+
       await prisma.client.deleteMany({ where: { id: { in: [clientId1, clientId2] } } });
       await prisma.businessSettings.deleteMany({ where: { singletonKey: 'DEFAULT' } });
     }
@@ -752,15 +763,26 @@ describe('Invoices Database Integration - Concurrency & Atomicity', () => {
     vi.restoreAllMocks();
 
     // Clean up specifically the rows we created
-    await prisma.invoiceItem.deleteMany({ where: { invoice: { clientId } } });
+    await prisma.$executeRaw`ALTER TABLE public."invoice_items" DISABLE TRIGGER USER`;
+    try {
+      await prisma.invoiceItem.deleteMany({ where: { invoice: { clientId } } });
+    } finally {
+      await prisma.$executeRaw`ALTER TABLE public."invoice_items" ENABLE TRIGGER USER`;
+    }
 
     await prisma.$executeRaw`ALTER TABLE public."audit_logs" DISABLE TRIGGER USER`;
-    await prisma.auditLog.deleteMany({ where: { actorUserId: testAdminId } });
-    await prisma.$executeRaw`ALTER TABLE public."audit_logs" ENABLE TRIGGER USER`;
+    try {
+      await prisma.auditLog.deleteMany({ where: { actorUserId: testAdminId } });
+    } finally {
+      await prisma.$executeRaw`ALTER TABLE public."audit_logs" ENABLE TRIGGER USER`;
+    }
 
     await prisma.$executeRaw`ALTER TABLE public."invoices" DISABLE TRIGGER USER`;
-    await prisma.invoice.deleteMany({ where: { clientId } });
-    await prisma.$executeRaw`ALTER TABLE public."invoices" ENABLE TRIGGER USER`;
+    try {
+      await prisma.invoice.deleteMany({ where: { clientId } });
+    } finally {
+      await prisma.$executeRaw`ALTER TABLE public."invoices" ENABLE TRIGGER USER`;
+    }
 
     await prisma.client.deleteMany({ where: { id: clientId } });
     await prisma.businessSettings.deleteMany({ where: { singletonKey: 'DEFAULT' } });
@@ -910,6 +932,73 @@ describe('Invoices Database Integration - Concurrency & Atomicity', () => {
     expect(invoiceItems.length).toBe(0);
 
     vi.restoreAllMocks();
+  });
+
+  it('Late AuditLog failure fully rolls back Mode A update (transaction)', async () => {
+    const response = await request(app).post('/api/v1/invoices').send(validPayload);
+    expect(response.status).toBe(201);
+
+    const invoice = await prisma.invoice.findFirstOrThrow({ include: { items: true } });
+    const originalItemIds = invoice.items.map((i) => i.id).sort();
+    const originalUpdatedAt = invoice.updatedAt.getTime();
+    const originalAuditCount = await prisma.auditLog.count();
+
+    const updatePayload = {
+      ...validPayload,
+      items: [
+        {
+          description: 'New Item 1',
+          quantity: '1.000',
+          rate: '200.00',
+          gstRate: '18.00',
+        },
+        {
+          description: 'New Item 2',
+          quantity: '1.000',
+          rate: '300.00',
+          gstRate: '18.00',
+        },
+      ],
+    };
+
+    const originalCreateAuditLog = InvoicesRepository.createInvoiceAuditLog;
+    vi.spyOn(InvoicesRepository, 'createInvoiceAuditLog').mockImplementation(async (data, tx) => {
+      if (data.action === 'INVOICE_UPDATED') {
+        throw new Error('Simulated Late AuditLog Failure');
+      }
+      return originalCreateAuditLog.call(InvoicesRepository, data, tx);
+    });
+
+    try {
+      await expect(
+        InvoicesService.updateInvoice(
+          testAdminId,
+          invoice.id,
+          updatePayload as Parameters<typeof InvoicesService.updateInvoice>[2],
+          {
+            ipAddress: '1',
+            userAgent: '2',
+            requestId: '3',
+          },
+        ),
+      ).rejects.toThrow('Simulated Late AuditLog Failure');
+
+      const refetched = await prisma.invoice.findUniqueOrThrow({
+        where: { id: invoice.id },
+        include: { items: true },
+      });
+
+      expect(refetched.subtotal.toString()).toBe('1000');
+      expect(refetched.updatedAt.getTime()).toBe(originalUpdatedAt);
+      expect(refetched.items.length).toBe(1);
+      expect(refetched.items.map((i) => i.id).sort()).toEqual(originalItemIds);
+      expect(refetched.items[0].description).toBe('Item A');
+
+      const newAuditCount = await prisma.auditLog.count();
+      expect(newAuditCount).toBe(originalAuditCount);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it('Client concurrency test (Client row-level locking using SELECT ... FOR UPDATE)', async () => {

@@ -12,6 +12,21 @@ process.env.CORS_ALLOWED_ORIGINS ??= 'http://localhost:3000';
 let globalSetupCompleted = false;
 let preSuiteCounts: Record<string, number> = {};
 
+export function assertCleanPreSuiteCounts(counts: Record<string, number>, tables: string[]) {
+  const contaminated: string[] = [];
+  for (const table of tables) {
+    if (counts[table] > 0) {
+      contaminated.push(`Table '${table}' contains ${counts[table]} unexpected persistent rows.`);
+    }
+  }
+
+  if (contaminated.length > 0) {
+    throw new Error(
+      `PRE-SUITE DATABASE CONTAMINATION:\n${contaminated.join('\n')}\nClean invoiceflow_test before running database integration tests.`,
+    );
+  }
+}
+
 const CORE_TABLES = [
   'users',
   'sessions',
@@ -76,6 +91,8 @@ export async function setup() {
     }
 
     preSuiteCounts = await getTableCounts(client);
+    assertCleanPreSuiteCounts(preSuiteCounts, CORE_TABLES);
+
     globalSetupCompleted = true;
   } finally {
     await client.end();
