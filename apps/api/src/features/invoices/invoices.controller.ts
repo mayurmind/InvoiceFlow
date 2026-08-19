@@ -88,4 +88,25 @@ export class InvoicesController {
       next(error);
     }
   }
+
+  static async downloadInvoicePdf(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.auth || !req.auth.user) {
+        throw new UnauthorizedError('Authentication required');
+      }
+      const { invoiceId } = req.params;
+
+      // Dynamic import or regular import - usually top level, but for now we'll assume InvoicePdfService is imported at top
+      const { InvoicePdfService } = await import('./pdf/invoice-pdf.service');
+      const { buffer, filename } = await InvoicePdfService.generateInvoicePdf(invoiceId);
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      res.setHeader('Cache-Control', 'private, no-store');
+
+      res.status(200).send(buffer);
+    } catch (error) {
+      next(error);
+    }
+  }
 }

@@ -67,4 +67,13 @@ router.post(
   InvoicesController.issueInvoice,
 );
 
+router.get(
+  '/:invoiceId/pdf',
+  authenticateRequest,
+  requirePasswordChangeCompleted,
+  requireRoles(UserRole.SUPER_ADMIN, UserRole.STAFF, UserRole.VIEWER),
+  validateRequest({ params: invoiceIdParamSchema }),
+  InvoicesController.downloadInvoicePdf,
+);
+
 export { router as invoicesRouter };
