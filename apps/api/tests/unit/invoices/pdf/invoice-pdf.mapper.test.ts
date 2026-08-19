@@ -185,38 +185,68 @@ describe('invoice-pdf.mapper', () => {
       expect(model.recipient.name).toBe('Client 1');
     });
 
-    it('M-04 invoicePrefix absent from supplier model', () => {
-      const model = buildInvoicePdfModel({
-        ...validInvoice,
-        businessSnapshot: { ...validSupplier, invoicePrefix: 'INV' },
-      } as unknown as Prisma.InvoiceGetPayload<{ include: { items: true } }>);
-      expect(
-        (model.supplier as unknown as Prisma.InvoiceGetPayload<{ include: { items: true } }>)
-          .invoicePrefix,
-      ).toBeUndefined();
+    it('M-04 business snapshot containing invoicePrefix is rejected', () => {
+      expect(() =>
+        buildInvoicePdfModel({
+          ...validInvoice,
+          businessSnapshot: {
+            ...validSupplier,
+            invoicePrefix: 'INV',
+          },
+        } as unknown as Prisma.InvoiceGetPayload<{ include: { items: true } }>),
+      ).toThrow(ConflictError);
     });
 
-    it('M-05 defaultDueDays absent', () => {
-      const model = buildInvoicePdfModel({
-        ...validInvoice,
-        businessSnapshot: { ...validSupplier, defaultDueDays: 15 },
-      } as unknown as Prisma.InvoiceGetPayload<{ include: { items: true } }>);
-      expect(
-        (model.supplier as unknown as Prisma.InvoiceGetPayload<{ include: { items: true } }>)
-          .defaultDueDays,
-      ).toBeUndefined();
+    it('M-05 business snapshot containing defaultDueDays is rejected', () => {
+      expect(() =>
+        buildInvoicePdfModel({
+          ...validInvoice,
+          businessSnapshot: {
+            ...validSupplier,
+            defaultDueDays: 15,
+          },
+        } as unknown as Prisma.InvoiceGetPayload<{ include: { items: true } }>),
+      ).toThrow(ConflictError);
     });
 
-    it('M-06 client notes absent', () => {
-      const model = buildInvoicePdfModel({
-        ...validInvoice,
-        clientSnapshot: { ...validClient, notes: 'Secret note' },
-      } as unknown as Prisma.InvoiceGetPayload<{ include: { items: true } }>);
-      expect(
-        (model.recipient as unknown as Prisma.InvoiceGetPayload<{ include: { items: true } }>)
-          .notes,
-      ).toBeUndefined();
+    it('M-06 client snapshot containing notes is rejected', () => {
+      expect(() =>
+        buildInvoicePdfModel({
+          ...validInvoice,
+          clientSnapshot: {
+            ...validClient,
+            notes: 'Secret note',
+          },
+        } as unknown as Prisma.InvoiceGetPayload<{ include: { items: true } }>),
+      ).toThrow(ConflictError);
     });
+
+    it('M-06B client snapshot containing terms is rejected', () => {
+      expect(() =>
+        buildInvoicePdfModel({
+          ...validInvoice,
+          clientSnapshot: {
+            ...validClient,
+            terms: 'Unexpected terms',
+          },
+        } as unknown as Prisma.InvoiceGetPayload<{ include: { items: true } }>),
+      ).toThrow(ConflictError);
+    });
+
+    it.each(['bankAccountName', 'bankAccountNumber', 'bankName', 'bankIfsc', 'upiId'] as const)(
+      'rejects business snapshot missing required key %s',
+      (field) => {
+        const snapshot: Record<string, unknown> = { ...validSupplier };
+        delete snapshot[field];
+
+        expect(() =>
+          buildInvoicePdfModel({
+            ...validInvoice,
+            businessSnapshot: snapshot,
+          } as unknown as Prisma.InvoiceGetPayload<{ include: { items: true } }>),
+        ).toThrow(ConflictError);
+      },
+    );
 
     it('M-07 DRAFT rejected', () => {
       expect(() =>

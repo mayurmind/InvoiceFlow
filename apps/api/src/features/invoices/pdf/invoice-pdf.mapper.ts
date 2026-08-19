@@ -21,12 +21,10 @@ export const businessSnapshotV1PdfSchema = z
     phone: z.string().nullable(),
     logoStorageKey: z.string().nullable(),
     bankAccountName: z.string().nullable(),
-    bankAccountNumber: z.string().nullable().optional(),
-    bankName: z.string().nullable().optional(),
-    bankIfsc: z.string().nullable().optional(),
-    upiId: z.string().nullable().optional(),
-    invoicePrefix: z.string().nullable().optional(),
-    defaultDueDays: z.number().nullable().optional(),
+    bankAccountNumber: z.string().nullable(),
+    bankName: z.string().nullable(),
+    bankIfsc: z.string().nullable(),
+    upiId: z.string().nullable(),
   })
   .strict();
 
@@ -46,8 +44,6 @@ export const clientSnapshotV1PdfSchema = z
     stateCode: z.string(),
     postalCode: z.string(),
     country: z.string(),
-    notes: z.string().nullable().optional(),
-    terms: z.string().nullable().optional(),
   })
   .strict();
 
