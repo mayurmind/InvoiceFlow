@@ -109,4 +109,65 @@ export class InvoicesController {
       next(error);
     }
   }
+
+  static async sendInvoiceEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.auth || !req.auth.user) {
+        throw new UnauthorizedError('Authentication required');
+      }
+      const { invoiceId } = req.params;
+      const { InvoiceEmailService } = await import('./email/invoice-email.service');
+      const service = new InvoiceEmailService();
+
+      const result = await service.sendInvoiceEmail(invoiceId, {
+        actorUserId: req.auth.user.id,
+        requestId: req.id as string,
+        ipAddress: req.ip || 'unknown',
+        userAgent: req.headers['user-agent'] || 'unknown',
+      });
+
+      res.status(result.status).json(result.delivery);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async resendInvoiceEmail(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.auth || !req.auth.user) {
+        throw new UnauthorizedError('Authentication required');
+      }
+      const { invoiceId } = req.params;
+      const { InvoiceEmailService } = await import('./email/invoice-email.service');
+      const service = new InvoiceEmailService();
+
+      const result = await service.resendInvoiceEmail(invoiceId, {
+        actorUserId: req.auth.user.id,
+        requestId: req.id as string,
+        ipAddress: req.ip || 'unknown',
+        userAgent: req.headers['user-agent'] || 'unknown',
+      });
+
+      res.status(result.status).json(result.delivery);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async listInvoiceEmailDeliveries(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.auth || !req.auth.user) {
+        throw new UnauthorizedError('Authentication required');
+      }
+      const { invoiceId } = req.params;
+      const { InvoiceEmailService } = await import('./email/invoice-email.service');
+      const service = new InvoiceEmailService();
+
+      const deliveries = await service.listInvoiceEmailDeliveries(invoiceId);
+
+      res.status(200).json(deliveries);
+    } catch (error) {
+      next(error);
+    }
+  }
 }

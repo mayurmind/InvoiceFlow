@@ -13,6 +13,10 @@ import {
   invoiceIdParamSchema,
   invoiceIssueSchema,
 } from './invoices.schemas';
+import {
+  sendInvoiceEmailBodySchema,
+  resendInvoiceEmailBodySchema,
+} from './email/invoice-email.schemas';
 
 const router = Router();
 
@@ -74,6 +78,37 @@ router.get(
   requireRoles(UserRole.SUPER_ADMIN, UserRole.STAFF, UserRole.VIEWER),
   validateRequest({ params: invoiceIdParamSchema }),
   InvoicesController.downloadInvoicePdf,
+);
+
+router.post(
+  '/:invoiceId/send',
+  originGuard,
+  authenticateRequest,
+  requirePasswordChangeCompleted,
+  requireRoles(UserRole.SUPER_ADMIN, UserRole.STAFF),
+  requireCsrfToken,
+  validateRequest({ params: invoiceIdParamSchema, body: sendInvoiceEmailBodySchema }),
+  InvoicesController.sendInvoiceEmail,
+);
+
+router.post(
+  '/:invoiceId/resend',
+  originGuard,
+  authenticateRequest,
+  requirePasswordChangeCompleted,
+  requireRoles(UserRole.SUPER_ADMIN, UserRole.STAFF),
+  requireCsrfToken,
+  validateRequest({ params: invoiceIdParamSchema, body: resendInvoiceEmailBodySchema }),
+  InvoicesController.resendInvoiceEmail,
+);
+
+router.get(
+  '/:invoiceId/email-deliveries',
+  authenticateRequest,
+  requirePasswordChangeCompleted,
+  requireRoles(UserRole.SUPER_ADMIN, UserRole.STAFF, UserRole.VIEWER),
+  validateRequest({ params: invoiceIdParamSchema }),
+  InvoicesController.listInvoiceEmailDeliveries,
 );
 
 export { router as invoicesRouter };

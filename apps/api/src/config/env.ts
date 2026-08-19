@@ -60,6 +60,19 @@ const envSchema = z
       ),
     JWT_ISSUER: z.string().default('invoiceflow-api'),
     JWT_AUDIENCE: z.string().default('invoiceflow-web'),
+    EMAIL_PROVIDER: z.enum(['mock', 'resend']).default('mock'),
+    EMAIL_API_KEY: z.string().optional(),
+    EMAIL_FROM_ADDRESS: z
+      .string({ required_error: 'EMAIL_FROM_ADDRESS is required' })
+      .email('EMAIL_FROM_ADDRESS must be a valid email')
+      .max(320)
+      .refine((val) => !/[\r\n]/.test(val), { message: 'CR/LF forbidden' }),
+    EMAIL_FROM_NAME: z
+      .string({ required_error: 'EMAIL_FROM_NAME is required' })
+      .trim()
+      .min(1)
+      .max(100)
+      .refine((val) => !/[\r\n]/.test(val), { message: 'CR/LF forbidden' }),
   })
   .superRefine((data, ctx) => {
     try {
@@ -75,10 +88,43 @@ const envSchema = z
     } catch {
       // Errors are already caught by individual field refinement
     }
+
+    if (data.NODE_ENV === 'production' && data.EMAIL_PROVIDER !== 'resend') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'EMAIL_PROVIDER must be resend in production',
+        path: ['EMAIL_PROVIDER'],
+      });
+    }
+    if (data.NODE_ENV === 'test' && data.EMAIL_PROVIDER !== 'mock') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'EMAIL_PROVIDER must be mock in test environment',
+        path: ['EMAIL_PROVIDER'],
+      });
+    }
+    if (
+      data.EMAIL_PROVIDER === 'resend' &&
+      (!data.EMAIL_API_KEY || data.EMAIL_API_KEY.trim() === '')
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'EMAIL_API_KEY is required and non-empty when provider is resend',
+        path: ['EMAIL_API_KEY'],
+      });
+    }
   });
 
 export const parseEnv = (environment: NodeJS.ProcessEnv = process.env) => {
-  const parsed = envSchema.safeParse(environment);
+  const envToParse = { ...environment };
+
+  if (envToParse.NODE_ENV === 'test' || envToParse.NODE_ENV === 'development') {
+    envToParse.EMAIL_FROM_ADDRESS = envToParse.EMAIL_FROM_ADDRESS || 'test@invoiceflow.local';
+    envToParse.EMAIL_FROM_NAME = envToParse.EMAIL_FROM_NAME || 'Test Sender';
+    envToParse.EMAIL_API_KEY = envToParse.EMAIL_API_KEY || 're_dummy_test_key_only';
+  }
+
+  const parsed = envSchema.safeParse(envToParse);
   if (!parsed.success) {
     // eslint-disable-next-line no-console
     console.error('❌ Invalid environment variables:', parsed.error.flatten().fieldErrors);

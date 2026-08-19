@@ -95,3 +95,21 @@ export class PasswordChangeRequiredError extends AppError {
     super(message, 403, 'PASSWORD_CHANGE_REQUIRED');
   }
 }
+
+/**
+ * Used for definitive upstream provider rejection (502).
+ */
+export class BadGatewayError extends AppError {
+  constructor(message = 'Bad Gateway') {
+    super(message, 502, 'BAD_GATEWAY');
+  }
+}
+
+/**
+ * Used for ambiguous upstream provider outcomes or unavailability (503).
+ */
+export class ServiceUnavailableError extends AppError {
+  constructor(message = 'Service Unavailable') {
+    super(message, 503, 'SERVICE_UNAVAILABLE');
+  }
+}
