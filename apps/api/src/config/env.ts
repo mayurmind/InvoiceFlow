@@ -96,7 +96,10 @@ const envSchema = z
         path: ['EMAIL_PROVIDER'],
       });
     }
-    if ((data.NODE_ENV === 'test' || data.NODE_ENV === 'development') && data.EMAIL_PROVIDER !== 'mock') {
+    if (
+      (data.NODE_ENV === 'test' || data.NODE_ENV === 'development') &&
+      data.EMAIL_PROVIDER !== 'mock'
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'EMAIL_PROVIDER must be mock in test and development environments',
@@ -126,8 +129,11 @@ export const parseEnv = (environment: NodeJS.ProcessEnv = process.env) => {
 
   const parsed = envSchema.safeParse(envToParse);
   if (!parsed.success) {
-    // eslint-disable-next-line no-console
-    console.error('❌ Invalid environment variables:', parsed.error.flatten().fieldErrors);
+    const errorMsg =
+      '❌ Invalid environment variables: ' +
+      JSON.stringify(parsed.error.flatten().fieldErrors) +
+      '\n';
+    process.stderr.write(errorMsg);
     process.exit(1);
   }
 
@@ -145,11 +151,8 @@ export const parseEnv = (environment: NodeJS.ProcessEnv = process.env) => {
       DATABASE_URL: databaseUrl,
     };
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error(
-      '❌ Invalid database configuration:',
-      error instanceof Error ? error.message : 'Unknown error',
-    );
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    process.stderr.write('❌ Invalid database configuration: ' + errorMessage + '\n');
     process.exit(1);
   }
 };

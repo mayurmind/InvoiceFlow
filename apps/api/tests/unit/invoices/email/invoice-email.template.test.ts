@@ -68,4 +68,43 @@ describe('Invoice Email Template', () => {
     expect(template.htmlBody).not.toContain('Due Date');
     expect(template.textBody).not.toContain('Due Date');
   });
+
+  it('rejects CR injection in invoice number', () => {
+    const model = {
+      metadata: { invoiceNumber: 'INV\r123', invoiceDate: '2023-01-01' },
+      supplier: { displayName: 'Supplier Inc' },
+      recipient: { name: 'Client LLC' },
+      items: [],
+      totals: { total: '110' },
+    } as unknown as InvoicePdfModel;
+    expect(() => generateInvoiceEmailTemplate(model)).toThrow(
+      'Email subject contains prohibited CR/LF characters',
+    );
+  });
+
+  it('rejects LF injection in invoice number', () => {
+    const model = {
+      metadata: { invoiceNumber: 'INV\n123', invoiceDate: '2023-01-01' },
+      supplier: { displayName: 'Supplier Inc' },
+      recipient: { name: 'Client LLC' },
+      items: [],
+      totals: { total: '110' },
+    } as unknown as InvoicePdfModel;
+    expect(() => generateInvoiceEmailTemplate(model)).toThrow(
+      'Email subject contains prohibited CR/LF characters',
+    );
+  });
+
+  it('rejects CRLF injection in supplier display name', () => {
+    const model = {
+      metadata: { invoiceNumber: 'INV-123', invoiceDate: '2023-01-01' },
+      supplier: { displayName: 'Supplier\r\nInc' },
+      recipient: { name: 'Client LLC' },
+      items: [],
+      totals: { total: '110' },
+    } as unknown as InvoicePdfModel;
+    expect(() => generateInvoiceEmailTemplate(model)).toThrow(
+      'Email subject contains prohibited CR/LF characters',
+    );
+  });
 });

@@ -355,6 +355,24 @@ describe('Invoice Email Service', () => {
       expect(mockFinalizePendingToFailed).not.toHaveBeenCalled();
     });
 
+    it('leaves PENDING on application_error without status (503)', async () => {
+      const err = Object.assign(new Error('app err'), { name: 'application_error' });
+      mockSendInvoiceEmail.mockRejectedValueOnce(err);
+      await expect(service.sendInvoiceEmail('inv_1', defaultContext)).rejects.toThrow(
+        'Provider outcome is ambiguous',
+      );
+      expect(mockFinalizePendingToFailed).not.toHaveBeenCalled();
+    });
+
+    it('leaves PENDING on generic provider network exception (503)', async () => {
+      const err = new Error('socket closed unexpectedly');
+      mockSendInvoiceEmail.mockRejectedValueOnce(err);
+      await expect(service.sendInvoiceEmail('inv_1', defaultContext)).rejects.toThrow(
+        'Provider outcome is ambiguous',
+      );
+      expect(mockFinalizePendingToFailed).not.toHaveBeenCalled();
+    });
+
     it('leaves PENDING on invalid_idempotency_key (500)', async () => {
       const err = Object.assign(new Error('key'), { name: 'invalid_idempotency_key' });
       mockSendInvoiceEmail.mockRejectedValueOnce(err);
@@ -391,15 +409,42 @@ describe('Invoice Email Service', () => {
       expect(mockFinalizePendingToFailed).not.toHaveBeenCalled();
     });
 
-    it('handles already-ACCEPTED finalization race safely', async () => {
+    it('handles already-ACCEPTED finalization race safely with same provider and message ID', async () => {
       mockLockEmailDeliveryForUpdate.mockResolvedValue({
         id: 'del_1',
         status: EmailDeliveryStatus.ACCEPTED,
+        provider: 'mock',
         providerMessageId: 'msg_1',
       });
       mockSendInvoiceEmail.mockResolvedValue({ provider: 'mock', providerMessageId: 'msg_1' });
       const res = await service.sendInvoiceEmail('inv_1', defaultContext);
       expect(res.status).toBe(201);
+    });
+
+    it('throws ConflictError on already-ACCEPTED finalization race with different message ID', async () => {
+      mockLockEmailDeliveryForUpdate.mockResolvedValue({
+        id: 'del_1',
+        status: EmailDeliveryStatus.ACCEPTED,
+        provider: 'mock',
+        providerMessageId: 'msg_old',
+      });
+      mockSendInvoiceEmail.mockResolvedValue({ provider: 'mock', providerMessageId: 'msg_new' });
+      await expect(service.sendInvoiceEmail('inv_1', defaultContext)).rejects.toThrow(
+        'Delivery already accepted with different provider or message ID',
+      );
+    });
+
+    it('throws ConflictError on already-ACCEPTED finalization race with different provider', async () => {
+      mockLockEmailDeliveryForUpdate.mockResolvedValue({
+        id: 'del_1',
+        status: EmailDeliveryStatus.ACCEPTED,
+        provider: 'old_provider',
+        providerMessageId: 'msg_1',
+      });
+      mockSendInvoiceEmail.mockResolvedValue({ provider: 'mock', providerMessageId: 'msg_1' });
+      await expect(service.sendInvoiceEmail('inv_1', defaultContext)).rejects.toThrow(
+        'Delivery already accepted with different provider or message ID',
+      );
     });
 
     it('handles already-FAILED finalization race safely', async () => {
@@ -512,6 +557,7 @@ describe('Invoice Email Service', () => {
       mockLockEmailDeliveryForUpdate.mockResolvedValueOnce({
         id: 'del_1',
         status: EmailDeliveryStatus.ACCEPTED,
+        provider: 'mock',
         providerMessageId: 'msg_old',
       });
       mockSendInvoiceEmail.mockResolvedValueOnce({
@@ -519,7 +565,7 @@ describe('Invoice Email Service', () => {
         providerMessageId: 'msg_new',
       });
       await expect(service.sendInvoiceEmail('inv_1', defaultContext)).rejects.toThrow(
-        'Delivery already accepted with different message ID',
+        'Delivery already accepted with different provider or message ID',
       );
     });
   });

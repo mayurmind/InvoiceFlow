@@ -161,11 +161,16 @@ export class InvoiceEmailService {
     isResume = prepareResult.resume;
 
     // ----- OUTSIDE TRANSACTION -----
-    let providerResult;
+    let pdfBuffer: Buffer;
+    let pdfFilename: string;
+    let template: ReturnType<typeof generateInvoiceEmailTemplate>;
+    const idempotencyKey = `invoiceflow-email-delivery:${targetDeliveryId}`;
+
     try {
       // 1. Generate PDF
-      const { buffer: pdfBuffer, filename: pdfFilename } =
-        await InvoicePdfService.generateInvoicePdf(invoiceId);
+      const pdfResult = await InvoicePdfService.generateInvoicePdf(invoiceId);
+      pdfBuffer = pdfResult.buffer;
+      pdfFilename = pdfResult.filename;
 
       // 2. Fetch invoice model again just for template (we already proved it's valid)
       // Since it's immutable for email purposes, a simple read is fine.
@@ -174,10 +179,20 @@ export class InvoiceEmailService {
       );
       if (!invoice) throw new Error('Invoice disappeared');
       const model = buildInvoicePdfModel(invoice);
-      const template = generateInvoiceEmailTemplate(model);
+      template = generateInvoiceEmailTemplate(model);
+    } catch (error: unknown) {
+      await this.finalizeFailed(
+        targetDeliveryId!,
+        'INTERNAL_RENDER_FAILED',
+        'Failed to generate email content',
+        ctx,
+        invoiceId,
+      );
+      throw new Error('Failed to generate email content');
+    }
 
-      const idempotencyKey = `invoiceflow-email-delivery:${targetDeliveryId}`;
-
+    let providerResult;
+    try {
       // 3. Provider Call
       providerResult = await this.provider.sendInvoiceEmail({
         to: recipientEmailStr,
@@ -190,15 +205,6 @@ export class InvoiceEmailService {
       });
     } catch (error: unknown) {
       const err = error as Error & { name?: string; statusCode?: number; code?: string };
-      // Analyze error outside transaction
-      const isDefinitiveProviderRejection =
-        err.name === 'validation_error' || err.statusCode === 400 || err.statusCode === 403; // Real resend validation error
-
-      const isAmbiguous =
-        err.name === 'ResendAmbiguousError' ||
-        err.name === 'mock_timeout' ||
-        (err.statusCode && err.statusCode >= 500) ||
-        err.code === 'ECONNRESET';
 
       if (err.name === 'invalid_idempotency_key') {
         throw new Error('Local contract defect: invalid idempotency key format');
@@ -212,25 +218,21 @@ export class InvoiceEmailService {
         throw new ConflictError('Attempt still in progress');
       }
 
-      if (isAmbiguous) {
-        throw new ServiceUnavailableError('Provider outcome is ambiguous');
-      }
-
-      // Definitive failure
-      const failureCode = isDefinitiveProviderRejection
-        ? 'PROVIDER_REJECTED'
-        : 'INTERNAL_RENDER_FAILED';
-      const failureMessage = isDefinitiveProviderRejection
-        ? 'Provider rejected the email request'
-        : 'Failed to generate email content';
-
-      await this.finalizeFailed(targetDeliveryId, failureCode, failureMessage, ctx, invoiceId);
+      const isDefinitiveProviderRejection =
+        err.name === 'validation_error' || err.statusCode === 400 || err.statusCode === 403;
 
       if (isDefinitiveProviderRejection) {
+        await this.finalizeFailed(
+          targetDeliveryId!,
+          'PROVIDER_REJECTED',
+          'Provider rejected the email request',
+          ctx,
+          invoiceId,
+        );
         throw new BadGatewayError('Provider rejected the email request');
-      } else {
-        throw new Error(failureMessage);
       }
+
+      throw new ServiceUnavailableError('Provider outcome is ambiguous');
     }
 
     // 4. Finalize Success
@@ -243,11 +245,14 @@ export class InvoiceEmailService {
       }
 
       if (lock.status === EmailDeliveryStatus.ACCEPTED) {
-        if (lock.providerMessageId === providerResult.providerMessageId) {
+        if (
+          lock.provider === providerResult.provider &&
+          lock.providerMessageId === providerResult.providerMessageId
+        ) {
           // Idempotent success
           return lock;
         }
-        throw new ConflictError('Delivery already accepted with different message ID');
+        throw new ConflictError('Delivery already accepted with different provider or message ID');
       }
 
       const updated = await this.repository.finalizePendingToAccepted(

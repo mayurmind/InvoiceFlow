@@ -1,5 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
-import { parseEnv } from '../../src/config/env';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 describe('Environment Validation', () => {
   const baseValidEnv: NodeJS.ProcessEnv = {
@@ -24,7 +23,13 @@ describe('Environment Validation', () => {
     EMAIL_FROM_NAME: 'InvoiceFlow Test',
   };
 
-  it('accepts valid configuration and parses defaults', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.resetModules();
+  });
+
+  it('accepts valid configuration and parses defaults', async () => {
+    const { parseEnv } = await import('../../src/config/env');
     const env = parseEnv(baseValidEnv);
 
     expect(env.NODE_ENV).toBe('test');
@@ -37,7 +42,7 @@ describe('Environment Validation', () => {
     expect(env.JWT_ISSUER).toBe('invoiceflow-api'); // default
   });
 
-  it('fails securely on missing TEST_DATABASE_URL when NODE_ENV=test', () => {
+  it('fails securely on missing TEST_DATABASE_URL when NODE_ENV=test', async () => {
     const missingTestDatabaseEnv: NodeJS.ProcessEnv = {
       ...baseValidEnv,
     };
@@ -46,31 +51,29 @@ describe('Environment Validation', () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
+    const { parseEnv } = await import('../../src/config/env');
     expect(() => parseEnv(missingTestDatabaseEnv)).toThrow('process.exit called');
 
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(errorSpy).toHaveBeenCalledWith(
-      '❌ Invalid database configuration:',
-      'TEST_DATABASE_URL is required when NODE_ENV=test.',
+      expect.stringContaining('TEST_DATABASE_URL is required when NODE_ENV=test'),
     );
-
-    exitSpy.mockRestore();
-    errorSpy.mockRestore();
   });
 
-  it('selects TEST_DATABASE_URL in test mode even with remote DATABASE_URL', () => {
+  it('selects TEST_DATABASE_URL in test mode even with remote DATABASE_URL', async () => {
     const testEnv: NodeJS.ProcessEnv = {
       ...baseValidEnv,
       DATABASE_URL: 'postgresql://runtime:runtime@db.example.supabase.co:5432/postgres',
     };
 
+    const { parseEnv } = await import('../../src/config/env');
     const env = parseEnv(testEnv);
     expect(env.DATABASE_URL).toBe(baseValidEnv.TEST_DATABASE_URL);
   });
 
-  it('fails securely on unsafe remote TEST_DATABASE_URL in test mode', () => {
+  it('fails securely on unsafe remote TEST_DATABASE_URL in test mode', async () => {
     const testEnv: NodeJS.ProcessEnv = {
       ...baseValidEnv,
       TEST_DATABASE_URL: 'postgresql://test:test@db.example.supabase.co:5432/postgres',
@@ -79,37 +82,38 @@ describe('Environment Validation', () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
+    const { parseEnv } = await import('../../src/config/env');
     expect(() => parseEnv(testEnv)).toThrow('process.exit called');
     expect(exitSpy).toHaveBeenCalledWith(1);
-
-    exitSpy.mockRestore();
-    errorSpy.mockRestore();
+    expect(errorSpy).toHaveBeenCalled();
   });
 
-  it('development mode does not require TEST_DATABASE_URL', () => {
+  it('development mode does not require TEST_DATABASE_URL', async () => {
     const testEnv: NodeJS.ProcessEnv = {
       ...baseValidEnv,
       NODE_ENV: 'development',
     };
     delete testEnv.TEST_DATABASE_URL;
 
+    const { parseEnv } = await import('../../src/config/env');
     const env = parseEnv(testEnv);
     expect(env.DATABASE_URL).toBe(testEnv.DATABASE_URL);
   });
 
-  it('production mode does not require TEST_DATABASE_URL', () => {
+  it('production mode does not require TEST_DATABASE_URL', async () => {
     const testEnv: NodeJS.ProcessEnv = {
       ...validProductionEnv,
     };
     delete testEnv.TEST_DATABASE_URL;
 
+    const { parseEnv } = await import('../../src/config/env');
     const env = parseEnv(testEnv);
     expect(env.DATABASE_URL).toBe(testEnv.DATABASE_URL);
   });
 
-  it('fails securely on missing required auth secrets', () => {
+  it('fails securely on missing required auth secrets', async () => {
     const missingAccessSecretEnv: NodeJS.ProcessEnv = {
       ...baseValidEnv,
     };
@@ -118,17 +122,15 @@ describe('Environment Validation', () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
+    const { parseEnv } = await import('../../src/config/env');
     expect(() => parseEnv(missingAccessSecretEnv)).toThrow('process.exit called');
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(errorSpy).toHaveBeenCalled();
-
-    exitSpy.mockRestore();
-    errorSpy.mockRestore();
   });
 
-  it('fails securely on invalid REFRESH_TOKEN_TTL format', () => {
+  it('fails securely on invalid REFRESH_TOKEN_TTL format', async () => {
     const invalidEnv: NodeJS.ProcessEnv = {
       ...baseValidEnv,
       REFRESH_TOKEN_TTL: 'invalid-format',
@@ -137,17 +139,15 @@ describe('Environment Validation', () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
+    const { parseEnv } = await import('../../src/config/env');
     expect(() => parseEnv(invalidEnv)).toThrow('process.exit called');
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(errorSpy).toHaveBeenCalled();
-
-    exitSpy.mockRestore();
-    errorSpy.mockRestore();
   });
 
-  it('fails securely on weak auth secrets', () => {
+  it('fails securely on weak auth secrets', async () => {
     const invalidEnv: NodeJS.ProcessEnv = {
       ...baseValidEnv,
       ACCESS_TOKEN_SECRET: 'too-short',
@@ -156,17 +156,15 @@ describe('Environment Validation', () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
+    const { parseEnv } = await import('../../src/config/env');
     expect(() => parseEnv(invalidEnv)).toThrow('process.exit called');
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(errorSpy).toHaveBeenCalled();
-
-    exitSpy.mockRestore();
-    errorSpy.mockRestore();
   });
 
-  it('fails securely on invalid TTL formats', () => {
+  it('fails securely on invalid TTL formats', async () => {
     const invalidEnv: NodeJS.ProcessEnv = {
       ...baseValidEnv,
       ACCESS_TOKEN_TTL: 'invalid',
@@ -175,17 +173,15 @@ describe('Environment Validation', () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
+    const { parseEnv } = await import('../../src/config/env');
     expect(() => parseEnv(invalidEnv)).toThrow('process.exit called');
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(errorSpy).toHaveBeenCalled();
-
-    exitSpy.mockRestore();
-    errorSpy.mockRestore();
   });
 
-  it('fails securely if REFRESH_TOKEN_TTL <= ACCESS_TOKEN_TTL', () => {
+  it('fails securely if REFRESH_TOKEN_TTL <= ACCESS_TOKEN_TTL', async () => {
     const invalidEnv: NodeJS.ProcessEnv = {
       ...baseValidEnv,
       ACCESS_TOKEN_TTL: '7d',
@@ -195,25 +191,23 @@ describe('Environment Validation', () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('process.exit called');
     });
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
+    const { parseEnv } = await import('../../src/config/env');
     expect(() => parseEnv(invalidEnv)).toThrow('process.exit called');
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(errorSpy).toHaveBeenCalled();
-
-    exitSpy.mockRestore();
-    errorSpy.mockRestore();
   });
 
   describe('Email Provider Requirements', () => {
-    let exitSpy: ReturnType<typeof vi.spyOn>;
-    let errorSpy: ReturnType<typeof vi.spyOn>;
+    let exitSpy: ReturnType<typeof vi.spyOn<NodeJS.Process, 'exit'>>;
+    let errorSpy: ReturnType<typeof vi.spyOn<NodeJS.WriteStream, 'write'>>;
 
     beforeEach(() => {
       exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
         throw new Error('process.exit called');
       });
-      errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      errorSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     });
 
     afterEach(() => {
@@ -221,19 +215,22 @@ describe('Environment Validation', () => {
       errorSpy.mockRestore();
     });
 
-    it('valid test environment succeeds with mock provider behavior', () => {
+    it('valid test environment succeeds with mock provider behavior', async () => {
       const testEnv: NodeJS.ProcessEnv = { ...baseValidEnv, NODE_ENV: 'test' };
+      const { parseEnv } = await import('../../src/config/env');
       const env = parseEnv(testEnv);
       expect(env.EMAIL_PROVIDER).toBe('mock');
     });
 
-    it('valid development environment succeeds with mock provider behavior', () => {
+    it('valid development environment succeeds with mock provider behavior', async () => {
       const devEnv: NodeJS.ProcessEnv = { ...baseValidEnv, NODE_ENV: 'development' };
+      const { parseEnv } = await import('../../src/config/env');
       const env = parseEnv(devEnv);
       expect(env.EMAIL_PROVIDER).toBe('mock');
     });
 
-    it('valid production environment succeeds only with EMAIL_PROVIDER=resend and required keys', () => {
+    it('valid production environment succeeds only with EMAIL_PROVIDER=resend and required keys', async () => {
+      const { parseEnv } = await import('../../src/config/env');
       const env = parseEnv(validProductionEnv);
       expect(env.EMAIL_PROVIDER).toBe('resend');
       expect(env.EMAIL_API_KEY).toBe('re_test_config_only_not_real');
@@ -241,51 +238,60 @@ describe('Environment Validation', () => {
       expect(env.EMAIL_FROM_NAME).toBe('InvoiceFlow Test');
     });
 
-    it('production without EMAIL_API_KEY fails closed', () => {
+    it('production without EMAIL_API_KEY fails closed', async () => {
       const env = { ...validProductionEnv };
       delete env.EMAIL_API_KEY;
+      const { parseEnv } = await import('../../src/config/env');
       expect(() => parseEnv(env)).toThrow('process.exit called');
     });
 
-    it('production without EMAIL_FROM_ADDRESS fails closed', () => {
+    it('production without EMAIL_FROM_ADDRESS fails closed', async () => {
       const env = { ...validProductionEnv };
       delete env.EMAIL_FROM_ADDRESS;
+      const { parseEnv } = await import('../../src/config/env');
       expect(() => parseEnv(env)).toThrow('process.exit called');
     });
 
-    it('production without EMAIL_FROM_NAME fails closed', () => {
+    it('production without EMAIL_FROM_NAME fails closed', async () => {
       const env = { ...validProductionEnv };
       delete env.EMAIL_FROM_NAME;
+      const { parseEnv } = await import('../../src/config/env');
       expect(() => parseEnv(env)).toThrow('process.exit called');
     });
 
-    it('production with EMAIL_PROVIDER=mock fails closed', () => {
+    it('production with EMAIL_PROVIDER=mock fails closed', async () => {
       const env = { ...validProductionEnv, EMAIL_PROVIDER: 'mock' };
+      const { parseEnv } = await import('../../src/config/env');
       expect(() => parseEnv(env)).toThrow('process.exit called');
     });
 
-    it('test environment cannot activate real Resend', () => {
+    it('test environment cannot activate real Resend', async () => {
       const env = { ...baseValidEnv, NODE_ENV: 'test', EMAIL_PROVIDER: 'resend' };
+      const { parseEnv } = await import('../../src/config/env');
       expect(() => parseEnv(env)).toThrow('process.exit called');
     });
 
-    it('development environment cannot activate real Resend', () => {
+    it('development environment cannot activate real Resend', async () => {
       const env = { ...baseValidEnv, NODE_ENV: 'development', EMAIL_PROVIDER: 'resend' };
+      const { parseEnv } = await import('../../src/config/env');
       expect(() => parseEnv(env)).toThrow('process.exit called');
     });
 
-    it('invalid EMAIL_FROM_ADDRESS fails validation', () => {
+    it('invalid EMAIL_FROM_ADDRESS fails validation', async () => {
       const env = { ...validProductionEnv, EMAIL_FROM_ADDRESS: 'invalid-email' };
+      const { parseEnv } = await import('../../src/config/env');
       expect(() => parseEnv(env)).toThrow('process.exit called');
     });
 
-    it('EMAIL_FROM_NAME containing CR/LF fails validation', () => {
+    it('EMAIL_FROM_NAME containing CR/LF fails validation', async () => {
       const env = { ...validProductionEnv, EMAIL_FROM_NAME: 'Bad\nName' };
+      const { parseEnv } = await import('../../src/config/env');
       expect(() => parseEnv(env)).toThrow('process.exit called');
     });
 
-    it('EMAIL_FROM_NAME over frozen max length fails validation', () => {
+    it('EMAIL_FROM_NAME over frozen max length fails validation', async () => {
       const env = { ...validProductionEnv, EMAIL_FROM_NAME: 'a'.repeat(101) };
+      const { parseEnv } = await import('../../src/config/env');
       expect(() => parseEnv(env)).toThrow('process.exit called');
     });
   });
@@ -300,20 +306,51 @@ describe('Environment Validation', () => {
     });
 
     it('handles non-Error thrown in parseEnv database resolution', async () => {
-      vi.stubEnv('DATABASE_URL', 'postgresql://user:pass@localhost:5432/db');
-      vi.stubEnv('NODE_ENV', 'production');
-      vi.stubEnv('EMAIL_PROVIDER', 'resend');
-      vi.stubEnv('EMAIL_API_KEY', 'key');
-      vi.stubEnv('EMAIL_FROM_ADDRESS', 'test@test.com');
-      vi.stubEnv('EMAIL_FROM_NAME', 'test name');
+      const { parseEnv } = await import('../../src/config/env');
 
       const dbUrlModule = await import('../../src/config/database-url');
+
       vi.spyOn(dbUrlModule, 'resolveRuntimeDatabaseUrl').mockImplementation(() => {
         throw 'Some string error';
       });
 
-      const { parseEnv } = await import('../../src/config/env');
-      expect(() => parseEnv(process.env)).toThrow('process.exit unexpectedly called');
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((code) => {
+        throw new Error(`TEST_PROCESS_EXIT_${String(code)}`);
+      });
+
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+      const validProductionEnv: NodeJS.ProcessEnv = {
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgresql://user:pass@localhost:5432/db',
+
+        CORS_ALLOWED_ORIGINS: 'http://localhost:3000',
+
+        ACCESS_TOKEN_SECRET: 'a'.repeat(32),
+        REFRESH_TOKEN_SECRET: 'b'.repeat(32),
+        CSRF_SECRET: 'c'.repeat(32),
+
+        ACCESS_TOKEN_TTL: '15m',
+        REFRESH_TOKEN_TTL: '7d',
+
+        EMAIL_PROVIDER: 'resend',
+        EMAIL_API_KEY: 'test-resend-api-key',
+        EMAIL_FROM_ADDRESS: 'test@example.com',
+        EMAIL_FROM_NAME: 'Test Sender',
+      };
+
+      expect(() => parseEnv(validProductionEnv)).toThrow('TEST_PROCESS_EXIT_1');
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+
+      const stderrOutput = stderrSpy.mock.calls.flat().map(String).join('');
+
+      expect(stderrOutput).toContain('Invalid database configuration');
+      expect(stderrOutput).toContain('Unknown error');
+      expect(stderrOutput).not.toContain('Some string error');
+
+      exitSpy.mockRestore();
+      stderrSpy.mockRestore();
     });
   });
 });

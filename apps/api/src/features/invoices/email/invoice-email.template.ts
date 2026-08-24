@@ -10,7 +10,10 @@ export function escapeHtml(unsafe: string): string {
 }
 
 export function sanitizeSubject(unsafe: string): string {
-  return unsafe.replace(/[\r\n]+/g, ' ').trim();
+  if (/[\r\n]/.test(unsafe)) {
+    throw new Error('Email subject contains prohibited CR/LF characters');
+  }
+  return unsafe.trim();
 }
 
 export interface GeneratedEmailTemplate {
