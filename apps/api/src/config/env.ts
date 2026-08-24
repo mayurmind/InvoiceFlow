@@ -96,10 +96,10 @@ const envSchema = z
         path: ['EMAIL_PROVIDER'],
       });
     }
-    if (data.NODE_ENV === 'test' && data.EMAIL_PROVIDER !== 'mock') {
+    if ((data.NODE_ENV === 'test' || data.NODE_ENV === 'development') && data.EMAIL_PROVIDER !== 'mock') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'EMAIL_PROVIDER must be mock in test environment',
+        message: 'EMAIL_PROVIDER must be mock in test and development environments',
         path: ['EMAIL_PROVIDER'],
       });
     }

@@ -271,12 +271,7 @@ describe('Environment Validation', () => {
 
     it('development environment cannot activate real Resend', () => {
       const env = { ...baseValidEnv, NODE_ENV: 'development', EMAIL_PROVIDER: 'resend' };
-      // Note: Actually development doesn't explicitly reject resend in Zod, wait!
-      // In env.ts: Zod schema doesn't reject it, but the test demands it cannot activate real Resend.
-      // Wait, is it forbidden in env.ts for development? Let's check env.ts.
-      // In env.ts: EMAIL_PROVIDER defaults to mock. There is no custom issue for dev, but let's check.
-      // I will write it, and if it fails, I'll see.
-      expect(() => parseEnv(env)).not.toThrow(); // Actually, wait, the prompt says "development environment cannot activate real Resend".
+      expect(() => parseEnv(env)).toThrow('process.exit called');
     });
 
     it('invalid EMAIL_FROM_ADDRESS fails validation', () => {
