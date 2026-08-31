@@ -57,6 +57,44 @@ export class InvoicesRepository {
     });
   }
 
+  static async hasActiveRecordedPayments(invoiceId: string, tx: ITXClient): Promise<boolean> {
+    const count = await tx.payment.count({
+      where: {
+        invoiceId,
+        status: 'RECORDED',
+      },
+    });
+    return count > 0;
+  }
+
+  static async hasPendingEmailDeliveries(invoiceId: string, tx: ITXClient): Promise<boolean> {
+    const count = await tx.emailDelivery.count({
+      where: {
+        invoiceId,
+        status: 'PENDING',
+      },
+    });
+    return count > 0;
+  }
+
+  static async markInvoiceCancelled(
+    invoiceId: string,
+    data: {
+      cancelledAt: Date;
+      cancellationReason: string;
+    },
+    tx: ITXClient,
+  ) {
+    return tx.invoice.update({
+      where: { id: invoiceId },
+      data: {
+        status: 'CANCELLED',
+        cancelledAt: data.cancelledAt,
+        cancellationReason: data.cancellationReason,
+      },
+    });
+  }
+
   static async updateInvoiceItemFinancials(
     itemId: string,
     calculatedValues: {

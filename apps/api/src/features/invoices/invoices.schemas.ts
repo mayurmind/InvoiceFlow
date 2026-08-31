@@ -66,6 +66,20 @@ export const invoiceUpdateSchema = invoiceCreateSchema;
 
 export const invoiceIssueSchema = z.object({}).strict();
 
+export const invoiceCancelSchema = z
+  .object({
+    reason: z
+      .string()
+      .trim()
+      .min(10, 'Cancellation reason must be at least 10 characters long')
+      .max(500, 'Cancellation reason must not exceed 500 characters')
+      .refine(
+        (val) => !/[<>\x00-\x1F\x7F]/.test(val),
+        'Reason contains invalid characters (HTML or control characters are not allowed)',
+      ),
+  })
+  .strict();
+
 export const invoiceIdParamSchema = z
   .object({
     invoiceId: z.string().uuid(),

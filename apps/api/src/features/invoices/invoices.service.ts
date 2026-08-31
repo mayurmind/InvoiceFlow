@@ -580,6 +580,88 @@ export class InvoicesService {
       return mapInvoiceToDetailResponse(refetched);
     });
   }
+
+  static async cancelInvoice(
+    actorUserId: string,
+    invoiceId: string,
+    reason: string,
+    auditContext: { requestId: string; ipAddress: string; userAgent: string },
+  ): Promise<InvoiceDetailResponse> {
+    const boundIp = auditContext.ipAddress.substring(0, 64);
+    const boundUa = auditContext.userAgent.substring(0, 500);
+
+    return await runInTransaction(async (tx) => {
+      // A. lock Invoice FOR UPDATE
+      await InvoicesRepository.lockInvoiceForUpdate(invoiceId, tx);
+      // B. reload invoice
+      const invoice = await InvoicesRepository.getInvoiceWithItems(invoiceId, tx);
+
+      // C. 404 if absent
+      if (!invoice) throw new NotFoundError('Invoice not found');
+
+      // Idempotency check / Cancellation check
+      if (invoice.status === InvoiceStatus.CANCELLED) {
+        throw new ConflictError('Invoice is already cancelled');
+      }
+
+      // D. require status SENT (DRAFT is not allowed)
+      if (invoice.status !== InvoiceStatus.SENT) {
+        throw new ConflictError('Only SENT invoices can be cancelled');
+      }
+
+      // E. check zero RECORDED payments
+      const hasActivePayments = await InvoicesRepository.hasActiveRecordedPayments(invoiceId, tx);
+      if (hasActivePayments) {
+        throw new ConflictError(
+          'Cannot cancel invoice with active payments. Reverse all payments first.',
+        );
+      }
+
+      // F. check zero PENDING email deliveries
+      const hasPendingEmails = await InvoicesRepository.hasPendingEmailDeliveries(invoiceId, tx);
+      if (hasPendingEmails) {
+        throw new ConflictError('Cannot cancel invoice while email delivery is pending.');
+      }
+
+      const previousStatus = invoice.status;
+
+      // G. capture cancellation timestamp
+      const cancelledAt = new Date();
+
+      // H. perform minimal invoice cancellation update
+      await InvoicesRepository.markInvoiceCancelled(
+        invoice.id,
+        {
+          cancelledAt,
+          cancellationReason: reason,
+        },
+        tx,
+      );
+
+      // I. create INVOICE_CANCELLED audit
+      await InvoicesRepository.createInvoiceAuditLog(
+        {
+          actorUserId,
+          action: 'INVOICE_CANCELLED',
+          entityId: invoice.id,
+          requestId: auditContext.requestId,
+          ipAddress: boundIp,
+          userAgent: boundUa,
+          metadata: {
+            previousStatus,
+            resultingStatus: InvoiceStatus.CANCELLED,
+            reason,
+          },
+        },
+        tx,
+      );
+
+      // J. reload response
+      const refetched = await InvoicesRepository.getInvoiceWithItems(invoice.id, tx);
+      if (!refetched) throw new Error('Refetch failed');
+      return mapInvoiceToDetailResponse(refetched);
+    });
+  }
 }
 
 function areItemsSemanticallyDifferent(

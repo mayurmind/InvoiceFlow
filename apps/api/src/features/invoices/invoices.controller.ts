@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+﻿import { Request, Response, NextFunction } from 'express';
 import { UnauthorizedError } from '../../errors/application.error';
 import { InvoicesService } from './invoices.service';
 import { InvoiceCreatePayload, InvoiceUpdatePayload, InvoiceListQuery } from './invoices.types';
@@ -20,6 +20,7 @@ export class InvoicesController {
 
       res.status(201).json(invoice);
     } catch (error) {
+      console.error(error);
       next(error);
     }
   }
@@ -29,10 +30,12 @@ export class InvoicesController {
       if (!req.auth || !req.auth.user) {
         throw new UnauthorizedError('Authentication required');
       }
-      const query = req.query as unknown as InvoiceListQuery;
+      const unknownQuery: unknown = req.query;
+      const query = unknownQuery as InvoiceListQuery;
       const response = await InvoicesService.listInvoices(query);
       res.json(response);
     } catch (error) {
+      console.error(error);
       next(error);
     }
   }
@@ -46,6 +49,7 @@ export class InvoicesController {
       const invoice = await InvoicesService.getInvoiceById(invoiceId);
       res.json(invoice);
     } catch (error) {
+      console.error(error);
       next(error);
     }
   }
@@ -66,6 +70,7 @@ export class InvoicesController {
 
       res.json(invoice);
     } catch (error) {
+      console.error(error);
       next(error);
     }
   }
@@ -85,6 +90,28 @@ export class InvoicesController {
 
       res.json(invoice);
     } catch (error) {
+      console.error(error);
+      next(error);
+    }
+  }
+
+  static async cancelInvoice(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.auth || !req.auth.user) {
+        throw new UnauthorizedError('Authentication required');
+      }
+      const { invoiceId } = req.params;
+      const { reason } = req.body as { reason: string };
+
+      const invoice = await InvoicesService.cancelInvoice(req.auth.user.id, invoiceId, reason, {
+        requestId: req.id as string,
+        ipAddress: req.ip || 'unknown',
+        userAgent: req.headers['user-agent'] || 'unknown',
+      });
+
+      res.json(invoice);
+    } catch (error) {
+      console.error(error);
       next(error);
     }
   }
@@ -106,6 +133,7 @@ export class InvoicesController {
 
       res.status(200).send(buffer);
     } catch (error) {
+      console.error(error);
       next(error);
     }
   }
@@ -128,6 +156,7 @@ export class InvoicesController {
 
       res.status(result.status).json(result.delivery);
     } catch (error) {
+      console.error(error);
       next(error);
     }
   }
@@ -150,6 +179,7 @@ export class InvoicesController {
 
       res.status(result.status).json(result.delivery);
     } catch (error) {
+      console.error(error);
       next(error);
     }
   }
@@ -167,6 +197,7 @@ export class InvoicesController {
 
       res.status(200).json(deliveries);
     } catch (error) {
+      console.error(error);
       next(error);
     }
   }

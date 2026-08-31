@@ -12,6 +12,7 @@ import {
   invoiceListQuerySchema,
   invoiceIdParamSchema,
   invoiceIssueSchema,
+  invoiceCancelSchema,
 } from './invoices.schemas';
 import {
   sendInvoiceEmailBodySchema,
@@ -69,6 +70,17 @@ router.post(
   requireCsrfToken,
   validateRequest({ params: invoiceIdParamSchema, body: invoiceIssueSchema }),
   InvoicesController.issueInvoice,
+);
+
+router.post(
+  '/:invoiceId/cancel',
+  originGuard,
+  authenticateRequest,
+  requirePasswordChangeCompleted,
+  requireRoles(UserRole.SUPER_ADMIN, UserRole.STAFF),
+  requireCsrfToken,
+  validateRequest({ params: invoiceIdParamSchema, body: invoiceCancelSchema }),
+  InvoicesController.cancelInvoice,
 );
 
 router.get(
