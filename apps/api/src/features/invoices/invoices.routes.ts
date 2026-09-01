@@ -18,6 +18,8 @@ import {
   sendInvoiceEmailBodySchema,
   resendInvoiceEmailBodySchema,
 } from './email/invoice-email.schemas';
+import { PaymentsController } from '../payments/payments.controller';
+import { paymentRecordBodySchema } from '../payments/payments.schemas';
 
 const router = Router();
 
@@ -121,6 +123,17 @@ router.get(
   requireRoles(UserRole.SUPER_ADMIN, UserRole.STAFF, UserRole.VIEWER),
   validateRequest({ params: invoiceIdParamSchema }),
   InvoicesController.listInvoiceEmailDeliveries,
+);
+
+router.post(
+  '/:invoiceId/payments',
+  originGuard,
+  authenticateRequest,
+  requirePasswordChangeCompleted,
+  requireRoles(UserRole.SUPER_ADMIN, UserRole.STAFF),
+  requireCsrfToken,
+  validateRequest({ params: invoiceIdParamSchema, body: paymentRecordBodySchema }),
+  PaymentsController.recordPayment,
 );
 
 export { router as invoicesRouter };
