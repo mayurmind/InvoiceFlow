@@ -13,3 +13,16 @@ export const paymentRecordBodySchema = z.object({
 });
 
 export type PaymentRecordBodyDto = z.infer<typeof paymentRecordBodySchema>;
+
+export const paymentReverseBodySchema = z.object({
+  reversalReason: z.string().min(1).max(500),
+});
+
+export type PaymentReverseBodyDto = z.infer<typeof paymentReverseBodySchema>;
+
+export const invoicePaymentIdParamSchema = z
+  .object({
+    invoiceId: z.string().uuid(),
+    paymentId: z.string().uuid(),
+  })
+  .strict();

@@ -12,6 +12,34 @@ export class PaymentsRepository {
   }
 
   /**
+   * Attempts to find a payment by its ID.
+   */
+  static async getPaymentById(paymentId: string, tx: ITXClient) {
+    return tx.payment.findUnique({
+      where: { id: paymentId },
+    });
+  }
+
+  /**
+   * Updates a payment's status and reversal information.
+   */
+  static async updatePaymentStatus(
+    paymentId: string,
+    data: {
+      status: PaymentStatus;
+      reversedAt: Date;
+      reversedByUserId: string;
+      reversalReason: string;
+    },
+    tx: ITXClient,
+  ) {
+    return tx.payment.update({
+      where: { id: paymentId },
+      data,
+    });
+  }
+
+  /**
    * Creates a new Payment record in the database.
    */
   static async createPaymentRecord(

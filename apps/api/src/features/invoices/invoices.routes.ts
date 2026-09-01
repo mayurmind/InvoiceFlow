@@ -19,7 +19,11 @@ import {
   resendInvoiceEmailBodySchema,
 } from './email/invoice-email.schemas';
 import { PaymentsController } from '../payments/payments.controller';
-import { paymentRecordBodySchema } from '../payments/payments.schemas';
+import {
+  paymentRecordBodySchema,
+  invoicePaymentIdParamSchema,
+  paymentReverseBodySchema,
+} from '../payments/payments.schemas';
 
 const router = Router();
 
@@ -134,6 +138,17 @@ router.post(
   requireCsrfToken,
   validateRequest({ params: invoiceIdParamSchema, body: paymentRecordBodySchema }),
   PaymentsController.recordPayment,
+);
+
+router.post(
+  '/:invoiceId/payments/:paymentId/reverse',
+  originGuard,
+  authenticateRequest,
+  requirePasswordChangeCompleted,
+  requireRoles(UserRole.SUPER_ADMIN, UserRole.STAFF),
+  requireCsrfToken,
+  validateRequest({ params: invoicePaymentIdParamSchema, body: paymentReverseBodySchema }),
+  PaymentsController.reversePayment,
 );
 
 export { router as invoicesRouter };
