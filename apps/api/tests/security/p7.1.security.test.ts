@@ -39,7 +39,9 @@ vi.mock('../../src/features/auth/auth.middleware', async (importOriginal) => {
         return next(new errorModule.UnauthorizedError());
       }
       const role = (req.headers['x-mock-role'] as UserRole) || UserRole.SUPER_ADMIN;
-      req.auth = { user: { id: 'test-user', role, email: 'test@example.com' } } as unknown as import('../../src/features/auth/auth.middleware').AuthContext;
+      req.auth = {
+        user: { id: 'test-user', role, email: 'test@example.com' },
+      } as unknown as import('../../src/features/auth/auth.middleware').AuthContext;
       next();
     }),
     requirePasswordChangeCompleted: vi.fn((req, res, next) => next()),
@@ -64,58 +66,89 @@ describe('P7.1 Security Matrix: Payment Recording', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(PaymentsService.recordPayment).mockResolvedValue(makePaymentFixture({ id: 'pay-123' }));
+    vi.mocked(PaymentsService.recordPayment).mockResolvedValue(
+      makePaymentFixture({ id: 'pay-123' }),
+    );
   });
 
   // Authentication & Authorization
   it('SEC-PAY-01: SUPER_ADMIN can record payment', async () => {
-    const res = await request(app).post(`/api/v1/invoices/${invoiceId}/payments`).set('x-mock-role', UserRole.SUPER_ADMIN).send({ amount: '10.00', method: PaymentMethod.CASH, idempotencyKey: 'sec-1' });
+    const res = await request(app)
+      .post(`/api/v1/invoices/${invoiceId}/payments`)
+      .set('x-mock-role', UserRole.SUPER_ADMIN)
+      .send({ amount: '10.00', method: PaymentMethod.CASH, idempotencyKey: 'sec-1' });
     expect(res.status).toBe(201);
   });
   it('SEC-PAY-02: STAFF can record payment', async () => {
-    const res = await request(app).post(`/api/v1/invoices/${invoiceId}/payments`).set('x-mock-role', UserRole.STAFF).send({ amount: '10.00', method: PaymentMethod.CASH, idempotencyKey: 'sec-2' });
+    const res = await request(app)
+      .post(`/api/v1/invoices/${invoiceId}/payments`)
+      .set('x-mock-role', UserRole.STAFF)
+      .send({ amount: '10.00', method: PaymentMethod.CASH, idempotencyKey: 'sec-2' });
     expect(res.status).toBe(201);
   });
   it('SEC-PAY-03: VIEWER cannot record payment (403)', async () => {
-    const res = await request(app).post(`/api/v1/invoices/${invoiceId}/payments`).set('x-mock-role', UserRole.VIEWER).send({ amount: '10.00', method: PaymentMethod.CASH, idempotencyKey: 'sec-3' });
+    const res = await request(app)
+      .post(`/api/v1/invoices/${invoiceId}/payments`)
+      .set('x-mock-role', UserRole.VIEWER)
+      .send({ amount: '10.00', method: PaymentMethod.CASH, idempotencyKey: 'sec-3' });
     expect(res.status).toBe(403);
   });
   it('SEC-PAY-04: Unauthenticated rejected (401)', async () => {
-    const res = await request(app).post(`/api/v1/invoices/${invoiceId}/payments`).set('x-mock-auth', 'none').send({ amount: '10.00', method: PaymentMethod.CASH, idempotencyKey: 'sec-4' });
+    const res = await request(app)
+      .post(`/api/v1/invoices/${invoiceId}/payments`)
+      .set('x-mock-auth', 'none')
+      .send({ amount: '10.00', method: PaymentMethod.CASH, idempotencyKey: 'sec-4' });
     expect(res.status).toBe(401);
   });
   it('SEC-PAY-05: Missing Origin rejected (403)', async () => {
-    const res = await request(app).post(`/api/v1/invoices/${invoiceId}/payments`).set('x-origin-verified', 'false').send({ amount: '10.00', method: PaymentMethod.CASH, idempotencyKey: 'sec-5' });
+    const res = await request(app)
+      .post(`/api/v1/invoices/${invoiceId}/payments`)
+      .set('x-origin-verified', 'false')
+      .send({ amount: '10.00', method: PaymentMethod.CASH, idempotencyKey: 'sec-5' });
     expect(res.status).toBe(403);
   });
 
   // Input Validation
   it('SEC-PAY-11: Reject missing amount', async () => {
-    const res = await request(app).post(`/api/v1/invoices/${invoiceId}/payments`).send({ method: PaymentMethod.CASH, idempotencyKey: 'sec-11' });
+    const res = await request(app)
+      .post(`/api/v1/invoices/${invoiceId}/payments`)
+      .send({ method: PaymentMethod.CASH, idempotencyKey: 'sec-11' });
     expect(res.status).toBe(400);
   });
   it('SEC-PAY-12: Reject non-string amount', async () => {
-    const res = await request(app).post(`/api/v1/invoices/${invoiceId}/payments`).send({ amount: 10, method: PaymentMethod.CASH, idempotencyKey: 'sec-12' });
+    const res = await request(app)
+      .post(`/api/v1/invoices/${invoiceId}/payments`)
+      .send({ amount: 10, method: PaymentMethod.CASH, idempotencyKey: 'sec-12' });
     expect(res.status).toBe(400);
   });
   it('SEC-PAY-13: Reject invalid decimal strings', async () => {
-    const res = await request(app).post(`/api/v1/invoices/${invoiceId}/payments`).send({ amount: "12.34.56", method: PaymentMethod.CASH, idempotencyKey: 'sec-13' });
+    const res = await request(app)
+      .post(`/api/v1/invoices/${invoiceId}/payments`)
+      .send({ amount: '12.34.56', method: PaymentMethod.CASH, idempotencyKey: 'sec-13' });
     expect(res.status).toBe(400);
   });
   it('SEC-PAY-14: Reject negative amount', async () => {
-    const res = await request(app).post(`/api/v1/invoices/${invoiceId}/payments`).send({ amount: "-100.00", method: PaymentMethod.CASH, idempotencyKey: 'sec-14' });
+    const res = await request(app)
+      .post(`/api/v1/invoices/${invoiceId}/payments`)
+      .send({ amount: '-100.00', method: PaymentMethod.CASH, idempotencyKey: 'sec-14' });
     expect(res.status).toBe(400);
   });
   it('SEC-PAY-15: Reject zero amount', async () => {
-    const res = await request(app).post(`/api/v1/invoices/${invoiceId}/payments`).send({ amount: "0.00", method: PaymentMethod.CASH, idempotencyKey: 'sec-15' });
+    const res = await request(app)
+      .post(`/api/v1/invoices/${invoiceId}/payments`)
+      .send({ amount: '0.00', method: PaymentMethod.CASH, idempotencyKey: 'sec-15' });
     expect(res.status).toBe(400);
   });
   it('SEC-PAY-16: Reject missing idempotencyKey', async () => {
-    const res = await request(app).post(`/api/v1/invoices/${invoiceId}/payments`).send({ amount: "10.00", method: PaymentMethod.CASH });
+    const res = await request(app)
+      .post(`/api/v1/invoices/${invoiceId}/payments`)
+      .send({ amount: '10.00', method: PaymentMethod.CASH });
     expect(res.status).toBe(400);
   });
   it('SEC-PAY-20: Reject missing paymentMethod', async () => {
-    const res = await request(app).post(`/api/v1/invoices/${invoiceId}/payments`).send({ amount: "10.00", idempotencyKey: 'sec-20' });
+    const res = await request(app)
+      .post(`/api/v1/invoices/${invoiceId}/payments`)
+      .send({ amount: '10.00', idempotencyKey: 'sec-20' });
     expect(res.status).toBe(400);
   });
 });

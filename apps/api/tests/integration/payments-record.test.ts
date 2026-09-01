@@ -60,10 +60,12 @@ describe('Integration: Payments Recording Route', () => {
   });
 
   it('records a valid payment and updates invoice to PARTIALLY_PAID', async () => {
-    vi.mocked(PaymentsService.recordPayment).mockResolvedValue(makePaymentFixture({ id: 'pay-123' }));
+    vi.mocked(PaymentsService.recordPayment).mockResolvedValue(
+      makePaymentFixture({ id: 'pay-123' }),
+    );
 
     const res = await request(app).post(url).send({
-      amount: "40.00",
+      amount: '40.00',
       method: PaymentMethod.BANK_TRANSFER,
       idempotencyKey: 'idem-1',
     });
@@ -73,10 +75,12 @@ describe('Integration: Payments Recording Route', () => {
   });
 
   it('rejects overpayment', async () => {
-    vi.mocked(PaymentsService.recordPayment).mockRejectedValue(new ConflictError('Payment amount exceeds outstanding balance'));
+    vi.mocked(PaymentsService.recordPayment).mockRejectedValue(
+      new ConflictError('Payment amount exceeds outstanding balance'),
+    );
 
     const res = await request(app).post(url).send({
-      amount: "150.00",
+      amount: '150.00',
       method: PaymentMethod.CASH,
       idempotencyKey: 'idem-2',
     });
@@ -86,10 +90,12 @@ describe('Integration: Payments Recording Route', () => {
   });
 
   it('returns existing payment for idempotent replay', async () => {
-    vi.mocked(PaymentsService.recordPayment).mockResolvedValue(makePaymentFixture({ id: 'existing-pay' }));
+    vi.mocked(PaymentsService.recordPayment).mockResolvedValue(
+      makePaymentFixture({ id: 'existing-pay' }),
+    );
 
     const res = await request(app).post(url).send({
-      amount: "40.00",
+      amount: '40.00',
       method: PaymentMethod.BANK_TRANSFER,
       idempotencyKey: 'idem-1',
     });
@@ -99,10 +105,12 @@ describe('Integration: Payments Recording Route', () => {
   });
 
   it('rejects idempotent replay with conflicting payload', async () => {
-    vi.mocked(PaymentsService.recordPayment).mockRejectedValue(new ConflictError('Idempotency key already used with different payload'));
+    vi.mocked(PaymentsService.recordPayment).mockRejectedValue(
+      new ConflictError('Idempotency key already used with different payload'),
+    );
 
     const res = await request(app).post(url).send({
-      amount: "50.00", // conflicting amount
+      amount: '50.00', // conflicting amount
       method: PaymentMethod.BANK_TRANSFER,
       idempotencyKey: 'idem-1',
     });
@@ -112,10 +120,12 @@ describe('Integration: Payments Recording Route', () => {
   });
 
   it('rejects payment on DRAFT invoice', async () => {
-    vi.mocked(PaymentsService.recordPayment).mockRejectedValue(new ConflictError('Cannot record payment on invoice in DRAFT status'));
+    vi.mocked(PaymentsService.recordPayment).mockRejectedValue(
+      new ConflictError('Cannot record payment on invoice in DRAFT status'),
+    );
 
     const res = await request(app).post(url).send({
-      amount: "40.00",
+      amount: '40.00',
       method: PaymentMethod.BANK_TRANSFER,
       idempotencyKey: 'idem-3',
     });

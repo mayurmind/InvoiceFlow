@@ -56,7 +56,7 @@ describe('PaymentsService - recordPayment', () => {
   const actorUserId = 'actor-user-id';
   const invoiceId = 'inv-uuid';
   const auditContext = { requestId: 'req-1', ipAddress: '127.0.0.1', userAgent: 'test' };
-  
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -65,11 +65,16 @@ describe('PaymentsService - recordPayment', () => {
     vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(null);
 
     await expect(
-      PaymentsService.recordPayment(invoiceId, actorUserId, {
-        amount: "100.00",
-        method: PaymentMethod.BANK_TRANSFER,
-        idempotencyKey: 'key-1'
-      }, auditContext)
+      PaymentsService.recordPayment(
+        invoiceId,
+        actorUserId,
+        {
+          amount: '100.00',
+          method: PaymentMethod.BANK_TRANSFER,
+          idempotencyKey: 'key-1',
+        },
+        auditContext,
+      ),
     ).rejects.toThrow(NotFoundError);
   });
 
@@ -79,11 +84,16 @@ describe('PaymentsService - recordPayment', () => {
     vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(makeInvoiceFixture());
     vi.mocked(PaymentsRepository.getPaymentByIdempotencyKey).mockResolvedValue(existingPayment);
 
-    const result = await PaymentsService.recordPayment(invoiceId, actorUserId, {
-      amount: "100.00",
-      method: PaymentMethod.BANK_TRANSFER,
-      idempotencyKey: 'key-1'
-    }, auditContext);
+    const result = await PaymentsService.recordPayment(
+      invoiceId,
+      actorUserId,
+      {
+        amount: '100.00',
+        method: PaymentMethod.BANK_TRANSFER,
+        idempotencyKey: 'key-1',
+      },
+      auditContext,
+    );
 
     expect(result).toEqual(existingPayment);
     expect(PaymentsRepository.createPaymentRecord).not.toHaveBeenCalled();
@@ -95,54 +105,91 @@ describe('PaymentsService - recordPayment', () => {
     vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(makeInvoiceFixture());
     vi.mocked(PaymentsRepository.getPaymentByIdempotencyKey).mockResolvedValue(existingPayment);
 
-    await expect(PaymentsService.recordPayment(invoiceId, actorUserId, {
-      amount: "100.00",
-      method: PaymentMethod.BANK_TRANSFER,
-      idempotencyKey: 'key-1'
-    }, auditContext)).rejects.toThrow(ConflictError);
+    await expect(
+      PaymentsService.recordPayment(
+        invoiceId,
+        actorUserId,
+        {
+          amount: '100.00',
+          method: PaymentMethod.BANK_TRANSFER,
+          idempotencyKey: 'key-1',
+        },
+        auditContext,
+      ),
+    ).rejects.toThrow(ConflictError);
   });
 
   it('throws ConflictError if invoice is DRAFT', async () => {
-    vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(makeInvoiceFixture({ status: InvoiceStatus.DRAFT }));
+    vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(
+      makeInvoiceFixture({ status: InvoiceStatus.DRAFT }),
+    );
     vi.mocked(PaymentsRepository.getPaymentByIdempotencyKey).mockResolvedValue(null);
 
-    await expect(PaymentsService.recordPayment(invoiceId, actorUserId, {
-      amount: "100.00",
-      method: PaymentMethod.BANK_TRANSFER,
-      idempotencyKey: 'key-1'
-    }, auditContext)).rejects.toThrow(/Cannot record payment on invoice in DRAFT status/);
+    await expect(
+      PaymentsService.recordPayment(
+        invoiceId,
+        actorUserId,
+        {
+          amount: '100.00',
+          method: PaymentMethod.BANK_TRANSFER,
+          idempotencyKey: 'key-1',
+        },
+        auditContext,
+      ),
+    ).rejects.toThrow(/Cannot record payment on invoice in DRAFT status/);
   });
 
   it('throws ConflictError on overpayment', async () => {
-    vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(makeInvoiceFixture({ outstandingAmount: new Prisma.Decimal(50) }));
+    vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(
+      makeInvoiceFixture({ outstandingAmount: new Prisma.Decimal(50) }),
+    );
     vi.mocked(PaymentsRepository.getPaymentByIdempotencyKey).mockResolvedValue(null);
 
-    await expect(PaymentsService.recordPayment(invoiceId, actorUserId, {
-      amount: "100.00",
-      method: PaymentMethod.BANK_TRANSFER,
-      idempotencyKey: 'key-1'
-    }, auditContext)).rejects.toThrow(/Payment amount exceeds outstanding balance/);
+    await expect(
+      PaymentsService.recordPayment(
+        invoiceId,
+        actorUserId,
+        {
+          amount: '100.00',
+          method: PaymentMethod.BANK_TRANSFER,
+          idempotencyKey: 'key-1',
+        },
+        auditContext,
+      ),
+    ).rejects.toThrow(/Payment amount exceeds outstanding balance/);
   });
 
   it('processes partial payment correctly', async () => {
-    vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(makeInvoiceFixture({ paidAmount: new Prisma.Decimal(0), outstandingAmount: new Prisma.Decimal(100) }));
+    vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(
+      makeInvoiceFixture({
+        paidAmount: new Prisma.Decimal(0),
+        outstandingAmount: new Prisma.Decimal(100),
+      }),
+    );
     vi.mocked(PaymentsRepository.getPaymentByIdempotencyKey).mockResolvedValue(null);
-    vi.mocked(PaymentsRepository.createPaymentRecord).mockResolvedValue(makePaymentFixture({ id: 'pay-new' }));
+    vi.mocked(PaymentsRepository.createPaymentRecord).mockResolvedValue(
+      makePaymentFixture({ id: 'pay-new' }),
+    );
 
-    await PaymentsService.recordPayment(invoiceId, actorUserId, {
-      amount: "40.00",
-      method: PaymentMethod.BANK_TRANSFER,
-      idempotencyKey: 'key-1'
-    }, auditContext);
+    await PaymentsService.recordPayment(
+      invoiceId,
+      actorUserId,
+      {
+        amount: '40.00',
+        method: PaymentMethod.BANK_TRANSFER,
+        idempotencyKey: 'key-1',
+      },
+      auditContext,
+    );
 
     expect(PaymentsRepository.updateInvoiceTotalsAndStatus).toHaveBeenCalledWith(
       invoiceId,
       {
         paidAmount: new Prisma.Decimal(40),
         outstandingAmount: new Prisma.Decimal(60),
-        status: InvoiceStatus.PARTIALLY_PAID
+        status: InvoiceStatus.PARTIALLY_PAID,
       },
-      expect.anything()
+      expect.anything(),
     );
 
     expect(PaymentsRepository.createPaymentAuditLog).toHaveBeenCalledWith(
@@ -152,32 +199,45 @@ describe('PaymentsService - recordPayment', () => {
           previousInvoiceStatus: InvoiceStatus.SENT,
           resultingInvoiceStatus: InvoiceStatus.PARTIALLY_PAID,
           previousOutstanding: '100',
-          resultingOutstanding: '60'
-        })
+          resultingOutstanding: '60',
+        }),
       }),
-      expect.anything()
+      expect.anything(),
     );
   });
 
   it('processes full payment correctly', async () => {
-    vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(makeInvoiceFixture({ status: InvoiceStatus.PARTIALLY_PAID, paidAmount: new Prisma.Decimal(40), outstandingAmount: new Prisma.Decimal(60) }));
+    vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(
+      makeInvoiceFixture({
+        status: InvoiceStatus.PARTIALLY_PAID,
+        paidAmount: new Prisma.Decimal(40),
+        outstandingAmount: new Prisma.Decimal(60),
+      }),
+    );
     vi.mocked(PaymentsRepository.getPaymentByIdempotencyKey).mockResolvedValue(null);
-    vi.mocked(PaymentsRepository.createPaymentRecord).mockResolvedValue(makePaymentFixture({ id: 'pay-full', method: PaymentMethod.CASH }));
+    vi.mocked(PaymentsRepository.createPaymentRecord).mockResolvedValue(
+      makePaymentFixture({ id: 'pay-full', method: PaymentMethod.CASH }),
+    );
 
-    await PaymentsService.recordPayment(invoiceId, actorUserId, {
-      amount: "60.00",
-      method: PaymentMethod.CASH,
-      idempotencyKey: 'key-2'
-    }, auditContext);
+    await PaymentsService.recordPayment(
+      invoiceId,
+      actorUserId,
+      {
+        amount: '60.00',
+        method: PaymentMethod.CASH,
+        idempotencyKey: 'key-2',
+      },
+      auditContext,
+    );
 
     expect(PaymentsRepository.updateInvoiceTotalsAndStatus).toHaveBeenCalledWith(
       invoiceId,
       {
         paidAmount: new Prisma.Decimal(100),
         outstandingAmount: new Prisma.Decimal(0),
-        status: InvoiceStatus.PAID
+        status: InvoiceStatus.PAID,
       },
-      expect.anything()
+      expect.anything(),
     );
   });
 });

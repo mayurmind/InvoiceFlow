@@ -47,7 +47,10 @@ export class PaymentsService {
         }
 
         // 4. Verify invoice eligibility
-        if (invoice.status !== InvoiceStatus.SENT && invoice.status !== InvoiceStatus.PARTIALLY_PAID) {
+        if (
+          invoice.status !== InvoiceStatus.SENT &&
+          invoice.status !== InvoiceStatus.PARTIALLY_PAID
+        ) {
           throw new ConflictError(`Cannot record payment on invoice in ${invoice.status} status`);
         }
 
@@ -129,7 +132,7 @@ export class PaymentsService {
       ) {
         const meta = error.meta as Record<string, unknown>;
         const target = meta.target as string | string[] | undefined;
-        
+
         if (
           target &&
           (target.includes('idempotencyKey') || target.includes('Payment_idempotencyKey_key'))
