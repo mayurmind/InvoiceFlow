@@ -8,25 +8,27 @@ vi.mock('../../src/features/auth/auth.middleware', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/features/auth/auth.middleware')>();
   return {
     ...actual,
-    authenticateRequest: vi.fn((req: Request & { auth?: unknown }, _res: Response, next: NextFunction) => {
-      const role = req.headers['x-mock-role'];
-      if (!role) {
-        return actual.authenticateRequest(req, _res, next);
-      }
-      req.auth = {
-        sessionId: 'test-session',
-        user: { 
-          id: 'test-user', 
-          email: 'test@example.com', 
-          firstName: 'Test',
-          lastName: 'User',
-          role, 
-          mustChangePassword: false,
-          lastLoginAt: null
+    authenticateRequest: vi.fn(
+      (req: Request & { auth?: unknown }, _res: Response, next: NextFunction) => {
+        const role = req.headers['x-mock-role'];
+        if (!role) {
+          return actual.authenticateRequest(req, _res, next);
         }
-      };
-      return next();
-    }),
+        req.auth = {
+          sessionId: 'test-session',
+          user: {
+            id: 'test-user',
+            email: 'test@example.com',
+            firstName: 'Test',
+            lastName: 'User',
+            role,
+            mustChangePassword: false,
+            lastLoginAt: null,
+          },
+        };
+        return next();
+      },
+    ),
   };
 });
 
