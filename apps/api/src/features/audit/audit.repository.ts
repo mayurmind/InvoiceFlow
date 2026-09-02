@@ -14,16 +14,7 @@ export interface AuditLogFilters {
 
 export class AuditRepository {
   static async getAuditLogs(filters: AuditLogFilters) {
-    const {
-      page,
-      limit,
-      actorUserId,
-      action,
-      entityType,
-      entityId,
-      dateFrom,
-      dateTo,
-    } = filters;
+    const { page, limit, actorUserId, action, entityType, entityId, dateFrom, dateTo } = filters;
 
     const where: Prisma.AuditLogWhereInput = {};
 
