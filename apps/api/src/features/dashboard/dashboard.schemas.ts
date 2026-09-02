@@ -19,7 +19,7 @@ export const dashboardSummaryResponseSchema = z.object({
       dueDate: z.string(),
       clientName: z.string(),
       total: z.string(),
-    })
+    }),
   ),
   recentPayments: z.array(
     z.object({
@@ -29,7 +29,7 @@ export const dashboardSummaryResponseSchema = z.object({
       method: z.nativeEnum(PaymentMethod),
       status: z.nativeEnum(PaymentStatus),
       paidAt: z.string(),
-    })
+    }),
   ),
 });
 

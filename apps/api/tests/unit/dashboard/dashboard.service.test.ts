@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DashboardService } from '../../../src/features/dashboard/dashboard.service';
 import { DashboardRepository } from '../../../src/features/dashboard/dashboard.repository';
-import { InvoiceStatus, PaymentMethod, PaymentStatus, Prisma } from '../../../src/generated/prisma/client';
+import {
+  InvoiceStatus,
+  PaymentMethod,
+  PaymentStatus,
+  Prisma,
+} from '../../../src/generated/prisma/client';
 
 vi.mock('../../../src/features/dashboard/dashboard.repository');
 

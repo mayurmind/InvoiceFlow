@@ -2,7 +2,12 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { app } from '../../../../src/app';
 import { prisma } from '../../../../src/database/prisma';
-import { InvoiceStatus, PaymentMethod, PaymentStatus, UserRole } from '../../../../src/generated/prisma/client';
+import {
+  InvoiceStatus,
+  PaymentMethod,
+  PaymentStatus,
+  UserRole,
+} from '../../../../src/generated/prisma/client';
 import { generateAuthToken } from '../../../helpers/auth';
 
 describe('Dashboard Integration - GET /api/v1/dashboard/summary', () => {
@@ -24,7 +29,7 @@ describe('Dashboard Integration - GET /api/v1/dashboard/summary', () => {
         stateCode: '01',
         postalCode: '123456',
         country: 'India',
-      }
+      },
     });
 
     // Create DRAFT
@@ -39,7 +44,7 @@ describe('Dashboard Integration - GET /api/v1/dashboard/summary', () => {
         total: 1000,
         outstandingAmount: 1000,
         paidAmount: 0,
-      }
+      },
     });
 
     // Create SENT (Outstanding)
@@ -54,7 +59,7 @@ describe('Dashboard Integration - GET /api/v1/dashboard/summary', () => {
         total: 2000,
         outstandingAmount: 2000,
         paidAmount: 0,
-      }
+      },
     });
 
     // Create PAID
@@ -69,7 +74,7 @@ describe('Dashboard Integration - GET /api/v1/dashboard/summary', () => {
         total: 3000,
         outstandingAmount: 0,
         paidAmount: 3000,
-      }
+      },
     });
   });
 
@@ -87,13 +92,13 @@ describe('Dashboard Integration - GET /api/v1/dashboard/summary', () => {
     const res = await request(app)
       .get('/api/v1/dashboard/summary')
       .set('Cookie', [`accessToken=${viewerToken}`]);
-      
+
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       outstandingAmount: '2000', // Only SENT/PARTIALLY_PAID
       paidAmount: '3000', // Only SENT/PARTIALLY_PAID/PAID
     });
-    
+
     // Status counts should reflect our seeded data
     // Assuming isolation isn't perfect in parallel tests, we expect at least these counts
     expect(res.body.invoiceStatusCounts[InvoiceStatus.DRAFT]).toBeGreaterThanOrEqual(1);

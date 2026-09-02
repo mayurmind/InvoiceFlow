@@ -204,7 +204,9 @@ export class PaymentsService {
 
       const newPaidAmount = currentPaid.sub(payment.amount);
       if (newPaidAmount.lessThan(0)) {
-        throw new ConflictError('Reversal would result in negative paid amount due to inconsistent state');
+        throw new ConflictError(
+          'Reversal would result in negative paid amount due to inconsistent state',
+        );
       }
       const newOutstandingAmount = currentOutstanding.add(payment.amount);
 

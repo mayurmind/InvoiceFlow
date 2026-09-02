@@ -112,15 +112,11 @@ describe('P7.2 Security Matrix: Payment Reversal', () => {
 
   // Input Validation
   it('SEC-REV-11: Reject missing reversalReason', async () => {
-    const res = await request(app)
-      .post(url)
-      .send({});
+    const res = await request(app).post(url).send({});
     expect(res.status).toBe(400);
   });
   it('SEC-REV-12: Reject empty reversalReason', async () => {
-    const res = await request(app)
-      .post(url)
-      .send({ reversalReason: '' });
+    const res = await request(app).post(url).send({ reversalReason: '' });
     expect(res.status).toBe(400);
   });
   it('SEC-REV-13: Reject exceedingly long reversalReason', async () => {

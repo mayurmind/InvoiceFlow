@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PaymentsService } from '../../../src/features/payments/payments.service';
 import { PaymentsRepository } from '../../../src/features/payments/payments.repository';
-import { Prisma, InvoiceStatus, PaymentMethod, PaymentStatus } from '../../../src/generated/prisma/client';
+import {
+  Prisma,
+  InvoiceStatus,
+  PaymentMethod,
+  PaymentStatus,
+} from '../../../src/generated/prisma/client';
 import { ConflictError, NotFoundError } from '../../../src/errors/application.error';
 import { Payment, Invoice } from '../../../src/generated/prisma/client';
 
@@ -89,7 +94,7 @@ describe('PaymentsService - reversePayment', () => {
 
   it('rejects if payment does not belong to invoice', async () => {
     vi.mocked(PaymentsRepository.getPaymentById).mockResolvedValue(
-      makePaymentFixture({ invoiceId: 'other-inv' })
+      makePaymentFixture({ invoiceId: 'other-inv' }),
     );
 
     await expect(
@@ -105,7 +110,7 @@ describe('PaymentsService - reversePayment', () => {
 
   it('rejects if payment is already reversed', async () => {
     vi.mocked(PaymentsRepository.getPaymentById).mockResolvedValue(
-      makePaymentFixture({ status: PaymentStatus.REVERSED })
+      makePaymentFixture({ status: PaymentStatus.REVERSED }),
     );
 
     await expect(
@@ -135,12 +140,16 @@ describe('PaymentsService - reversePayment', () => {
   });
 
   it('rejects if reversal would result in negative paid amount (inconsistent state)', async () => {
-    vi.mocked(PaymentsRepository.getPaymentById).mockResolvedValue(makePaymentFixture({ amount: new Prisma.Decimal(100) }));
-    vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(makeInvoiceFixture({
-      status: InvoiceStatus.PARTIALLY_PAID,
-      paidAmount: new Prisma.Decimal(50), // Less than payment amount
-      outstandingAmount: new Prisma.Decimal(50)
-    }));
+    vi.mocked(PaymentsRepository.getPaymentById).mockResolvedValue(
+      makePaymentFixture({ amount: new Prisma.Decimal(100) }),
+    );
+    vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(
+      makeInvoiceFixture({
+        status: InvoiceStatus.PARTIALLY_PAID,
+        paidAmount: new Prisma.Decimal(50), // Less than payment amount
+        outstandingAmount: new Prisma.Decimal(50),
+      }),
+    );
 
     await expect(
       PaymentsService.reversePayment(
@@ -156,7 +165,9 @@ describe('PaymentsService - reversePayment', () => {
   it('reverses a full payment correctly', async () => {
     vi.mocked(PaymentsRepository.getPaymentById).mockResolvedValue(makePaymentFixture());
     vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(makeInvoiceFixture());
-    vi.mocked(PaymentsRepository.updatePaymentStatus).mockResolvedValue(makePaymentFixture({ status: PaymentStatus.REVERSED }));
+    vi.mocked(PaymentsRepository.updatePaymentStatus).mockResolvedValue(
+      makePaymentFixture({ status: PaymentStatus.REVERSED }),
+    );
 
     await PaymentsService.reversePayment(
       invoiceId,
@@ -203,13 +214,19 @@ describe('PaymentsService - reversePayment', () => {
   });
 
   it('reverses a partial payment correctly', async () => {
-    vi.mocked(PaymentsRepository.getPaymentById).mockResolvedValue(makePaymentFixture({ amount: new Prisma.Decimal(40) }));
-    vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(makeInvoiceFixture({
-      status: InvoiceStatus.PARTIALLY_PAID,
-      paidAmount: new Prisma.Decimal(90),
-      outstandingAmount: new Prisma.Decimal(10)
-    }));
-    vi.mocked(PaymentsRepository.updatePaymentStatus).mockResolvedValue(makePaymentFixture({ status: PaymentStatus.REVERSED }));
+    vi.mocked(PaymentsRepository.getPaymentById).mockResolvedValue(
+      makePaymentFixture({ amount: new Prisma.Decimal(40) }),
+    );
+    vi.mocked(PaymentsRepository.getInvoiceById).mockResolvedValue(
+      makeInvoiceFixture({
+        status: InvoiceStatus.PARTIALLY_PAID,
+        paidAmount: new Prisma.Decimal(90),
+        outstandingAmount: new Prisma.Decimal(10),
+      }),
+    );
+    vi.mocked(PaymentsRepository.updatePaymentStatus).mockResolvedValue(
+      makePaymentFixture({ status: PaymentStatus.REVERSED }),
+    );
 
     await PaymentsService.reversePayment(
       invoiceId,

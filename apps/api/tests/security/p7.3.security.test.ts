@@ -22,7 +22,7 @@ describe('P7.3 Security - Dashboard MVP', () => {
     const res = await request(app)
       .get('/api/v1/dashboard/summary')
       .set('Cookie', [`accessToken=${viewerToken}`]);
-      
+
     expect(res.status).toBe(200);
   });
 
@@ -30,7 +30,7 @@ describe('P7.3 Security - Dashboard MVP', () => {
     const res = await request(app)
       .get('/api/v1/dashboard/summary')
       .set('Cookie', [`accessToken=${adminToken}`]);
-      
+
     expect(res.status).toBe(200);
   });
 });
