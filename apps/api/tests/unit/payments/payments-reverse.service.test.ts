@@ -7,7 +7,7 @@ import {
   PaymentMethod,
   PaymentStatus,
 } from '../../../src/generated/prisma/client';
-import { ConflictError, NotFoundError } from '../../../src/errors/application.error';
+import { NotFoundError } from '../../../src/errors/application.error';
 import { Payment, Invoice } from '../../../src/generated/prisma/client';
 
 const makeInvoiceFixture = (overrides: Partial<Invoice> = {}): Invoice => ({

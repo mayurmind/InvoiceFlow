@@ -1,24 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
-import { app } from '../../../../src/app';
-import { prisma } from '../../../../src/database/prisma';
-import {
-  InvoiceStatus,
-  PaymentMethod,
-  PaymentStatus,
-  UserRole,
-} from '../../../../src/generated/prisma/client';
-import { generateAuthToken } from '../../../helpers/auth';
+import { app } from '../../../src/app';
+import { prisma } from '../../../src/database/prisma';
+import { InvoiceStatus, UserRole } from '../../../src/generated/prisma/client';
 
 describe('Dashboard Integration - GET /api/v1/dashboard/summary', () => {
-  let viewerToken: string;
-  let adminToken: string;
-
   beforeAll(async () => {
-    // Generate valid tokens
-    viewerToken = await generateAuthToken(UserRole.VIEWER);
-    adminToken = await generateAuthToken(UserRole.SUPER_ADMIN);
-
     // Setup initial data
     const client = await prisma.client.create({
       data: {
@@ -91,7 +78,7 @@ describe('Dashboard Integration - GET /api/v1/dashboard/summary', () => {
   it('returns the dashboard summary with correct totals when authenticated', async () => {
     const res = await request(app)
       .get('/api/v1/dashboard/summary')
-      .set('Cookie', [`accessToken=${viewerToken}`]);
+      .set('x-mock-role', UserRole.VIEWER);
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
