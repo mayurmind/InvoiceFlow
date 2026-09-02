@@ -9,7 +9,7 @@ vi.mock('../../../src/features/auth/auth.middleware', async (importOriginal) => 
   const actual = await importOriginal<typeof import('../../../src/features/auth/auth.middleware')>();
   return {
     ...actual,
-    authenticateRequest: vi.fn((req: Request & { auth?: any }, _res: Response, next: NextFunction) => {
+    authenticateRequest: vi.fn((req: Request & { auth?: unknown }, _res: Response, next: NextFunction) => {
       const role = req.headers['x-mock-role'];
       if (!role) {
         return actual.authenticateRequest(req, _res, next);
@@ -22,7 +22,8 @@ vi.mock('../../../src/features/auth/auth.middleware', async (importOriginal) => 
           firstName: 'Test',
           lastName: 'User',
           role, 
-          mustChangePassword: false 
+          mustChangePassword: false,
+          lastLoginAt: null
         }
       };
       return next();
