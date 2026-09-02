@@ -1,8 +1,34 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
+import type { Request, Response, NextFunction } from 'express';
 import { app } from '../../../src/app';
 import { prisma } from '../../../src/database/prisma';
 import { InvoiceStatus, UserRole } from '../../../src/generated/prisma/client';
+
+vi.mock('../../../src/features/auth/auth.middleware', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../src/features/auth/auth.middleware')>();
+  return {
+    ...actual,
+    authenticateRequest: vi.fn((req: Request & { auth?: any }, _res: Response, next: NextFunction) => {
+      const role = req.headers['x-mock-role'];
+      if (!role) {
+        return actual.authenticateRequest(req, _res, next);
+      }
+      req.auth = {
+        sessionId: 'test-session',
+        user: { 
+          id: 'test-user', 
+          email: 'test@example.com', 
+          firstName: 'Test',
+          lastName: 'User',
+          role, 
+          mustChangePassword: false 
+        }
+      };
+      return next();
+    }),
+  };
+});
 
 describe('Dashboard Integration - GET /api/v1/dashboard/summary', () => {
   beforeAll(async () => {
@@ -46,6 +72,11 @@ describe('Dashboard Integration - GET /api/v1/dashboard/summary', () => {
         total: 2000,
         outstandingAmount: 2000,
         paidAmount: 0,
+        invoiceNumber: 'INV-001',
+        financialYear: '23-24',
+        sentAt: new Date(),
+        businessSnapshot: { name: 'Test Business' },
+        clientSnapshot: { name: 'Test Client' },
       },
     });
 
@@ -61,13 +92,23 @@ describe('Dashboard Integration - GET /api/v1/dashboard/summary', () => {
         total: 3000,
         outstandingAmount: 0,
         paidAmount: 3000,
+        invoiceNumber: 'INV-002',
+        financialYear: '23-24',
+        sentAt: new Date(),
+        businessSnapshot: { name: 'Test Business' },
+        clientSnapshot: { name: 'Test Client' },
       },
     });
   });
 
   afterAll(async () => {
-    await prisma.invoice.deleteMany();
-    await prisma.client.deleteMany();
+    await prisma.$executeRaw`ALTER TABLE public."invoices" DISABLE TRIGGER USER`;
+    try {
+      await prisma.invoice.deleteMany();
+      await prisma.client.deleteMany();
+    } finally {
+      await prisma.$executeRaw`ALTER TABLE public."invoices" ENABLE TRIGGER USER`;
+    }
   });
 
   it('returns 401 if unauthenticated', async () => {
