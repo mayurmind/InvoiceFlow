@@ -6,8 +6,9 @@ InvoiceFlow is a modern web application designed for comprehensive invoice manag
 
 ## Current Development Status
 
-- **Phase**: P0.10 Final Phase-0 Readiness Audit
-- **Active Focus**: Closing repository, runtime, CI and security-readiness blockers before P1 authorization.
+- **Phase**: Production Release Candidate (`v1.0.0-rc.1`)
+- **Status**: 100% Development Complete. The application is frozen for feature development.
+- **Active Focus**: Deployment Preparation and Infrastructure setup.
 
 ## Technology Stack
 
@@ -49,6 +50,11 @@ InvoiceFlow development follows mandatory architecture, TypeScript, financial-in
 - [Testing Strategy](docs/standards/testing-strategy.md)
 - [Pull Request Rules and Definition of Done](docs/standards/pull-request-and-definition-of-done.md)
 - [Dependency and CI Maintenance Policy](docs/standards/dependency-and-ci-policy.md)
+
+## Architecture & Deployment
+
+- [Deployment Guide](docs/architecture/deployment.md)
+- [Environment Configuration](docs/architecture/environment.md)
 
 ## Local Setup Instructions
 
