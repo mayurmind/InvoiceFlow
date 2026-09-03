@@ -43,8 +43,9 @@ export const bootstrapSuperAdmin = async (): Promise<void> => {
     console.log(`Successfully provisioned SUPER_ADMIN account for ${email}`);
     process.exitCode = 0;
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error(
-      'Bootstrap failed: Could not provision SUPER_ADMIN account due to an internal error.',
+      `Bootstrap failed: Could not provision SUPER_ADMIN account due to an internal error: ${message}`,
     );
     process.exitCode = 1;
   } finally {

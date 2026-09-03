@@ -127,7 +127,9 @@ describe('bootstrapSuperAdmin', () => {
     await bootstrapSuperAdmin();
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      'Bootstrap failed: Could not provision SUPER_ADMIN account due to an internal error.',
+      expect.stringContaining(
+        'Bootstrap failed: Could not provision SUPER_ADMIN account due to an internal error',
+      ),
     );
     expect(process.exitCode).toBe(1);
     expect(disconnectDatabase).toHaveBeenCalled();
@@ -141,7 +143,9 @@ describe('bootstrapSuperAdmin', () => {
     await bootstrapSuperAdmin();
 
     expect(consoleErrorSpy).toHaveBeenCalledWith(
-      'Bootstrap failed: Could not provision SUPER_ADMIN account due to an internal error.',
+      expect.stringContaining(
+        'Bootstrap failed: Could not provision SUPER_ADMIN account due to an internal error',
+      ),
     );
     expect(process.exitCode).toBe(1);
     expect(disconnectDatabase).toHaveBeenCalled();

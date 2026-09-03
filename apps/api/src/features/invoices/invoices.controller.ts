@@ -1,7 +1,8 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { UnauthorizedError } from '../../errors/application.error';
 import { InvoicesService } from './invoices.service';
 import { InvoiceCreatePayload, InvoiceUpdatePayload, InvoiceListQuery } from './invoices.types';
+import { logger } from '../../utilities/logger';
 
 export class InvoicesController {
   static async createInvoice(req: Request, res: Response, next: NextFunction) {
@@ -20,7 +21,7 @@ export class InvoicesController {
 
       res.status(201).json(invoice);
     } catch (error) {
-      console.error(error);
+      logger.error({ err: error, requestId: req.id }, 'createInvoice error');
       next(error);
     }
   }
@@ -35,7 +36,7 @@ export class InvoicesController {
       const response = await InvoicesService.listInvoices(query);
       res.json(response);
     } catch (error) {
-      console.error(error);
+      logger.error({ err: error, requestId: req.id }, 'listInvoices error');
       next(error);
     }
   }
@@ -49,7 +50,7 @@ export class InvoicesController {
       const invoice = await InvoicesService.getInvoiceById(invoiceId);
       res.json(invoice);
     } catch (error) {
-      console.error(error);
+      logger.error({ err: error, requestId: req.id }, 'getInvoiceById error');
       next(error);
     }
   }
@@ -70,7 +71,7 @@ export class InvoicesController {
 
       res.json(invoice);
     } catch (error) {
-      console.error(error);
+      logger.error({ err: error, requestId: req.id }, 'updateInvoice error');
       next(error);
     }
   }
@@ -90,7 +91,7 @@ export class InvoicesController {
 
       res.json(invoice);
     } catch (error) {
-      console.error(error);
+      logger.error({ err: error, requestId: req.id }, 'issueInvoice error');
       next(error);
     }
   }
@@ -111,7 +112,7 @@ export class InvoicesController {
 
       res.json(invoice);
     } catch (error) {
-      console.error(error);
+      logger.error({ err: error, requestId: req.id }, 'cancelInvoice error');
       next(error);
     }
   }
@@ -133,7 +134,7 @@ export class InvoicesController {
 
       res.status(200).send(buffer);
     } catch (error) {
-      console.error(error);
+      logger.error({ err: error, requestId: req.id }, 'downloadInvoicePdf error');
       next(error);
     }
   }
@@ -156,7 +157,7 @@ export class InvoicesController {
 
       res.status(result.status).json(result.delivery);
     } catch (error) {
-      console.error(error);
+      logger.error({ err: error, requestId: req.id }, 'sendInvoiceEmail error');
       next(error);
     }
   }
@@ -179,7 +180,7 @@ export class InvoicesController {
 
       res.status(result.status).json(result.delivery);
     } catch (error) {
-      console.error(error);
+      logger.error({ err: error, requestId: req.id }, 'resendInvoiceEmail error');
       next(error);
     }
   }
@@ -197,7 +198,7 @@ export class InvoicesController {
 
       res.status(200).json(deliveries);
     } catch (error) {
-      console.error(error);
+      logger.error({ err: error, requestId: req.id }, 'listInvoiceEmailDeliveries error');
       next(error);
     }
   }
