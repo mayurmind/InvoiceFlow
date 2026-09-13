@@ -684,7 +684,7 @@ function areItemsSemanticallyDifferent(
 }
 
 export function mapInvoiceToResponse(
-  invoice: Prisma.InvoiceGetPayload<{ include: { items: true } }>,
+  invoice: Prisma.InvoiceGetPayload<{ include: { items: true; payments: true } }>,
 ): DraftInvoiceResponse {
   return {
     id: invoice.id,
@@ -758,7 +758,7 @@ export function mapInvoiceToListResponse(
 }
 
 export function mapInvoiceToDetailResponse(
-  invoice: Prisma.InvoiceGetPayload<{ include: { items: true } }>,
+  invoice: Prisma.InvoiceGetPayload<{ include: { items: true } }> & { payments?: any[] },
 ): InvoiceDetailResponse {
   return {
     id: invoice.id,
@@ -796,6 +796,21 @@ export function mapInvoiceToDetailResponse(
       sgstAmount: item.sgstAmount.toFixed(2),
       igstAmount: item.igstAmount.toFixed(2),
       totalAmount: item.totalAmount.toFixed(2),
+    })),
+    payments: (invoice.payments || []).map((payment) => ({
+      id: payment.id,
+      amount: payment.amount.toFixed(2),
+      method: payment.method,
+      status: payment.status,
+      reference: payment.reference,
+      notes: payment.notes,
+      idempotencyKey: payment.idempotencyKey,
+      paidAt: payment.paidAt,
+      recordedByUserId: payment.recordedByUserId,
+      reversedAt: payment.reversedAt,
+      reversedByUserId: payment.reversedByUserId,
+      reversalReason: payment.reversalReason,
+      createdAt: payment.createdAt,
     })),
     createdByUserId: invoice.createdByUserId,
     sentByUserId: invoice.sentByUserId,

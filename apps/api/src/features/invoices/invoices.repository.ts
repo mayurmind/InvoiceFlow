@@ -27,6 +27,9 @@ export class InvoicesRepository {
         items: {
           orderBy: { lineNumber: 'asc' },
         },
+        payments: {
+          orderBy: { paidAt: 'desc' },
+        },
       },
     });
   }
@@ -141,6 +144,15 @@ export class InvoicesRepository {
 
   private static buildWhereClause(query: InvoiceListQuery): Prisma.InvoiceWhereInput {
     const where: Prisma.InvoiceWhereInput = {};
+
+    if (query.search) {
+      where.OR = [
+        { invoiceNumber: { contains: query.search, mode: 'insensitive' } },
+        { client: { name: { contains: query.search, mode: 'insensitive' } } },
+        { client: { email: { contains: query.search, mode: 'insensitive' } } },
+        { items: { some: { description: { contains: query.search, mode: 'insensitive' } } } },
+      ];
+    }
 
     if (query.status) {
       where.status = query.status;

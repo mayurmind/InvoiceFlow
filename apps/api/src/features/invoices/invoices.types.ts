@@ -1,4 +1,4 @@
-import { InvoiceStatus } from '../../generated/prisma/client';
+import { InvoiceStatus, PaymentMethod, PaymentStatus } from '../../generated/prisma/client';
 
 export interface InvoiceCreatePayload {
   clientId: string;
@@ -79,6 +79,7 @@ export interface InvoiceUpdatePayload {
 export interface InvoiceListQuery {
   page: number;
   limit: number;
+  search?: string;
   status?: InvoiceStatus;
   clientId?: string;
   invoiceDateFrom?: string;
@@ -159,6 +160,21 @@ export interface InvoiceDetailResponse {
     sgstAmount: string;
     igstAmount: string;
     totalAmount: string;
+  }[];
+  payments: {
+    id: string;
+    amount: string;
+    method: PaymentMethod;
+    status: PaymentStatus;
+    reference: string | null;
+    notes: string | null;
+    idempotencyKey: string | null;
+    paidAt: Date;
+    recordedByUserId: string | null;
+    reversedAt: Date | null;
+    reversedByUserId: string | null;
+    reversalReason: string | null;
+    createdAt: Date;
   }[];
   createdByUserId: string | null;
   sentByUserId: string | null;

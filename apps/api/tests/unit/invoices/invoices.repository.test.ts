@@ -112,7 +112,7 @@ describe('InvoicesRepository Details & Mutations', () => {
         await InvoicesRepository.getInvoiceWithItems('inv-1');
         expect(prisma.invoice.findUnique).toHaveBeenCalledWith(
           expect.objectContaining({
-            include: { items: { orderBy: { lineNumber: 'asc' } } },
+            include: { items: { orderBy: { lineNumber: 'asc' } }, payments: { orderBy: { paidAt: 'desc' } } },
           }),
         );
       });
