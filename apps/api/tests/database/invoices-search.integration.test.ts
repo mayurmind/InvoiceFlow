@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { prisma } from '../../src/database/prisma';
 import { InvoicesRepository } from '../../src/features/invoices/invoices.repository';
 
@@ -132,7 +132,7 @@ describe('Server-Side Invoice Search Database Tests', () => {
   });
 
   it('empty or whitespace search behaves normally (returns all)', async () => {
-    const list = await InvoicesRepository.listInvoices({ page: 1, limit: 10, search: '   ' });
+    await InvoicesRepository.listInvoices({ page: 1, limit: 10, search: '   ' });
     // Empty search should just be ignored or passed as contains: '   '
     // Actually, Zod schema trims the search to '', so it will be undefined or empty.
     // Let's test the repository ignoring it or handling it gracefully.

@@ -129,7 +129,7 @@ describe('F21 DB: Payment History & API Coverage', () => {
       },
     });
 
-    const res = await request(app).get(\`/api/v1/invoices/\${invoiceId}\`);
+    const res = await request(app).get(`/api/v1/invoices/${invoiceId}`);
     expect(res.status).toBe(200);
     
     // 1. Returns multiple real records
@@ -171,7 +171,7 @@ describe('F21 DB: Payment History & API Coverage', () => {
       },
     });
 
-    const res = await request(app).get(\`/api/v1/invoices/\${invoiceId}\`);
+    const res = await request(app).get(`/api/v1/invoices/${invoiceId}`);
     expect(res.status).toBe(200);
     expect(res.body.payments).toEqual([]);
   });
@@ -219,7 +219,7 @@ describe('F21 DB: Payment History & API Coverage', () => {
       },
     });
 
-    const res = await request(app).get(\`/api/v1/invoices/\${invoiceId}\`);
+    const res = await request(app).get(`/api/v1/invoices/${invoiceId}`);
     expect(res.status).toBe(200);
     expect(res.body.payments.length).toBe(1);
     expect(res.body.payments[0].status).toBe('REVERSED');
@@ -300,7 +300,7 @@ describe('F21 DB: Payment History & API Coverage', () => {
       },
     });
 
-    const res = await request(app).get(\`/api/v1/invoices/\${invoice1Id}\`);
+    const res = await request(app).get(`/api/v1/invoices/${invoice1Id}`);
     expect(res.status).toBe(200);
     expect(res.body.payments.length).toBe(1);
     expect(res.body.payments[0].amount).toBe('100.00'); // Ensure it only grabs invoice1 payment

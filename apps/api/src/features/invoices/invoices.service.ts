@@ -758,6 +758,7 @@ export function mapInvoiceToListResponse(
 }
 
 export function mapInvoiceToDetailResponse(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   invoice: Prisma.InvoiceGetPayload<{ include: { items: true } }> & { payments?: any[] },
 ): InvoiceDetailResponse {
   return {
